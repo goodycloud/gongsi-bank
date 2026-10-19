@@ -155,3 +155,8 @@ ol.results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 .code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:22px;letter-spacing:.06em;margin:4px 0;user-select:all}
 .field{width:100%;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:17px;padding:10px 12px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink)}
 .field:focus-visible{outline:2px solid var(--omr)}
+
+.bar>.icon-btn{flex:none;white-space:nowrap}
+.bar .sub{white-space:nowrap;flex:none}
+.bar h1.sm{flex:1}
+.opt.right .ex .v{color:var(--ok)}

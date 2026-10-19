@@ -461,7 +461,7 @@ function questionHtml(key, q, picked) {
       if (i + 1 === q.a) cls.push('right');
       if (i + 1 === picked) cls.push('picked');
       if (i + 1 === picked && picked !== q.a) cls.push('wrong');
-      if (q.ex && q.ex[i]) ex = `<div class="ex"><span class="v">${i + 1 === q.a ? '정답' : '오답'}</span>${esc(q.ex[i])}</div>`;
+      if (q.ex && q.ex[i]) { const [lab, txt] = exLabel(q.ex[i], i + 1 === q.a); ex = `<div class="ex"><span class="v">${lab}</span>${esc(txt)}</div>`; }
     }
     opts += `<li class="${cls.join(' ')}"><button type="button" data-i="${i + 1}" ${picked ? 'disabled' : ''} aria-label="${i + 1}번">
       <span class="bub">${i + 1}</span>${choiceBody(q, i)}</button>${ex}</li>`;
@@ -490,7 +490,7 @@ function oxHtml(key, o, picked) {
   if (picked) {
     const ok = (picked === 'O') === o.o;
     after = `<div class="result ${ok ? 'ok' : 'no'}">${ok ? '맞음' : '틀림'} · 이 문장은 ${o.o ? 'O (옳음)' : 'X (옳지 않음)'}</div>
-      ${o.ex ? `<div class="why"><b>해설</b> ${esc(o.ex)}</div>` : '<div class="noex">해설은 준비 중이에요. 원문 문항에서 다른 선지와 함께 볼 수 있어요.</div>'}
+      ${o.ex ? `<div class="why"><b>해설</b> ${esc(exLabel(o.ex)[1])}</div>` : '<div class="noex">해설은 준비 중이에요. 원문 문항에서 다른 선지와 함께 볼 수 있어요.</div>'}
       ${toolsHtml(o.id, !!o.ex, true)}`;
   }
   const btn = v => {
@@ -506,6 +506,12 @@ function oxHtml(key, o, picked) {
       ${after}
       <div class="meta">${esc(o.src)}</div>
     </article>`;
+}
+// 해설 머리말('옳음.' '틀림.' '정답.' '오답.')을 라벨로 바꾼다. 없으면 정답 여부로 붙인다.
+const EX_LAB = { '옳음': '옳은 설명', '틀림': '틀린 설명', '정답': '정답', '오답': '오답' };
+function exLabel(e, isAns) {
+  const m = /^(옳음|틀림|정답|오답)\.\s*/.exec(e);
+  return m ? [EX_LAB[m[1]], e.slice(m[0].length)] : [isAns ? '정답' : '오답', e];
 }
 function toolsHtml(id, hasEx, ox) {
   const st = STARS[id] && STARS[id].on, fl = FLAGS[id] && FLAGS[id].on;
