@@ -1,6 +1,6 @@
 /* 오프라인용 캐시. 캐시에서 먼저 보여주고 뒤에서 새 버전을 받아 둔다(다음에 열 때 반영).
    /api/는 건드리지 않는다. 앱을 고치면 V를 올린다. */
-const V = 'gb-v2';
+const V = 'gb-v3';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'data/kor.json', 'data/eng.json', 'data/law.json', 'data/adm.json', 'data/ox_law.json', 'data/ox_adm.json'];
 

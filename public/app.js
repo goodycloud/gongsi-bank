@@ -75,31 +75,43 @@ function wrongIds(key) { const out = []; for (const [id, h] of lastById(key)) if
 const starIds = key => Object.keys(STARS).filter(id => STARS[id].on && DATA[key] && DATA[key].byId.has(id));
 
 /* ── 출제 ──────────────────────────────────────────────── */
-function wpick(arr, w) {
+// 오늘의 세트는 날짜·과목으로 정해지는 고정 난수로 뽑는다. 두 기기의 기록이 같으면 같은 세트가 나온다.
+function seededRng(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+  let a = h >>> 0;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function wpick(arr, w, rng = Math.random) {
   const tot = w.reduce((a, b) => a + b, 0);
-  if (!(tot > 0)) return arr[Math.floor(Math.random() * arr.length)];
-  let r = Math.random() * tot;
+  if (!(tot > 0)) return arr[Math.floor(rng() * arr.length)];
+  let r = rng() * tot;
   for (let i = 0; i < arr.length; i++) { r -= w[i]; if (r <= 0) return arr[i]; }
   return arr[arr.length - 1];
 }
 const wq = (er, q) => (er[q.code] ?? .5) ** 2 + .05;
 
-// 실전 비율: 영역(BLUEPRINT) → 급수(LEVEL_MIX) → 오답률 높은 단원 우선
-function pickMix(items, conf, er, exclude, lastMap, cooldownDays) {
-  const cut = Date.now() - cooldownDays * DAY;
-  let cand = items.filter(q => !exclude.has(q.id) && (() => { const h = lastMap.get(q.id); return !h || h.t < cut; })());
-  if (!cand.length) cand = items.filter(q => !exclude.has(q.id));   // 쿨다운이 다 찼으면 오래된 것부터 다시
-  if (!cand.length) return null;
+// 실전 비율: 영역(BLUEPRINT) → 급수(LEVEL_MIX) → 오답률 높은 단원 우선.
+// 쿨다운: 마지막에 맞힌 문항은 conf.cooldown일, 틀린 문항은 conf.cooldownWrong일 쉰다(PC bank.py와 같다).
+function pickMix(items, conf, er, exclude, lastMap, rng = Math.random) {
+  const now = Date.now(), okCut = now - conf.cooldown * DAY, ngCut = now - (conf.cooldownWrong ?? 7) * DAY;
+  const resting = q => { const h = lastMap.get(q.id); return h && h.t >= (h.ok ? okCut : ngCut); };
+  const cand = items.filter(q => !exclude.has(q.id) && !resting(q));
+  if (!cand.length) {   // 전부 쉬는 중이면 가장 오래전에 푼 것부터 다시
+    let best = null;
+    for (const q of items) if (!exclude.has(q.id)) { const h = lastMap.get(q.id); if (!best || (h ? h.t : 0) < best[1]) best = [q, h ? h.t : 0]; }
+    return best && best[0];
+  }
   const byArea = {};
   for (const q of cand) (byArea[q.area] || (byArea[q.area] = [])).push(q);
   const areas = Object.keys(conf.blueprint).filter(a => byArea[a]);
-  if (!areas.length) return wpick(cand, cand.map(q => wq(er, q)));
-  let pool = byArea[wpick(areas, areas.map(a => conf.blueprint[a]))];
+  if (!areas.length) return wpick(cand, cand.map(q => wq(er, q)), rng);
+  let pool = byArea[wpick(areas, areas.map(a => conf.blueprint[a]), rng)];
   if (conf.levelMix) {
     const lvs = Object.keys(conf.levelMix).filter(lv => pool.some(q => q.lv === lv));
-    if (lvs.length) { const lv = wpick(lvs, lvs.map(l => conf.levelMix[l])); pool = pool.filter(q => q.lv === lv); }
+    if (lvs.length) { const lv = wpick(lvs, lvs.map(l => conf.levelMix[l]), rng); pool = pool.filter(q => q.lv === lv); }
   }
-  return wpick(pool, pool.map(q => wq(er, q)));
+  return wpick(pool, pool.map(q => wq(er, q)), rng);
 }
 
 // 단원: 안 푼 것·틀린 것 먼저, 맞힌 것은 뒤로 (bank.py unit과 같다). 쿨다운 없음.
@@ -110,21 +122,32 @@ function pickUnit(key, codes, exclude) {
   return wpick(cand, cand.map(q => { const h = last.get(q.id); return (h && h.ok ? .25 : 1) * wq(er, q); }));
 }
 
-function makeDaily(key, kind) {
+function generateDaily(key, kind) {
   const dk = key + '|' + dateKey() + '|' + kind;
-  if (DAILY[dk]) return DAILY[dk].ids;
-  const ex = new Set(), ids = [];
-  if (kind === 'ox') {
-    const conf = DATA[key].conf, er = errRate(key), last = lastById(key, true);
-    for (let i = 0; i < OX_N; i++) { const o = pickMix(OX[key].items, conf, er, ex, last, conf.cooldown); if (!o) break; ex.add(o.id); ids.push(o.id); }
-  } else {
-    const conf = DATA[key].conf, er = errRate(key), last = lastById(key);
-    for (let i = 0; i < DAILY_N; i++) { const q = pickMix(DATA[key].items, conf, er, ex, last, conf.cooldown); if (!q) break; ex.add(q.id); ids.push(q.id); }
-  }
-  const t = Date.now();
-  DAILY[dk] = { ids, t }; store.set('daily', DAILY);
-  emit({ k: 'd', d: { key: dk, ids }, t });
+  const ex = new Set(), ids = [], rng = seededRng(dk);
+  const conf = DATA[key].conf, er = errRate(key);
+  const [items, n, last] = kind === 'ox' ? [OX[key].items, OX_N, lastById(key, true)] : [DATA[key].items, DAILY_N, lastById(key)];
+  for (let i = 0; i < n; i++) { const q = pickMix(items, conf, er, ex, last, rng); if (!q) break; ex.add(q.id); ids.push(q.id); }
   return ids;
+}
+// 서버에 오늘의 세트를 등록한다. 먼저 등록된 세트가 있으면 그걸 돌려받는다(c: 서버 확정).
+async function claimDaily(dk, ids) {
+  const r = await fetch('api/daily', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + SYNC.code },
+    body: JSON.stringify({ dk, ids }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  DAILY[dk] = { ids: j.ids, t: j.t, c: true }; store.set('daily', DAILY);
+}
+// 세트를 새로 만들기 전에 먼저 동기화해서 다른 기기가 만든 오늘의 세트가 있으면 그걸 쓴다.
+async function ensureDaily(key, kind) {
+  const dk = key + '|' + dateKey() + '|' + kind;
+  if (DAILY[dk] && (DAILY[dk].c || !SYNC.code)) return;
+  if (SYNC.code) {
+    // 기록을 먼저 맞춰서 같은 후보를 만들고, 서버에서 확정받는다. 오프라인이면 이 기기 세트로 시작하고 나중에 맞춘다.
+    await Promise.race([syncNow(), new Promise(r => setTimeout(r, 4000))]);
+    try { await claimDaily(dk, DAILY[dk] ? DAILY[dk].ids : generateDaily(key, kind)); return; } catch (e) { /* 오프라인 */ }
+  }
+  if (!DAILY[dk]) { DAILY[dk] = { ids: generateDaily(key, kind), t: Date.now() }; store.set('daily', DAILY); }
 }
 function dailyState(key, kind) {
   const dk = key + '|' + dateKey() + '|' + kind;
@@ -160,7 +183,7 @@ function toggleMap(map, name, id) {
 }
 
 /* ── 동기화 ─────────────────────────────────────────────── */
-let syncTimer = null, syncing = false, syncState = '';
+let syncTimer = null, syncP = null, syncState = '';
 function emit(ev) {
   if (!SYNC.code) return;
   ev.u = ev.u || uid();
@@ -174,18 +197,20 @@ function applyRemote(items) {
     else if (e.k === 's' || e.k === 'f') {
       const map = e.k === 's' ? STARS : FLAGS, cur = map[e.d.id];
       if (!cur || e.t > cur.t) map[e.d.id] = { on: !!e.d.on, t: e.t };
-    } else if (e.k === 'd') {
-      const cur = DAILY[e.d.key];
-      if (!cur || e.t < cur.t || (e.t === cur.t && e.u < (cur.u || '~'))) DAILY[e.d.key] = { ids: e.d.ids, t: e.t, u: e.u };
-    }
+    }   // (첫 동기화 버전의 'd' 이벤트는 이제 /api/daily가 맡으므로 무시한다)
   }
   if (n) HIST.sort((a, b) => a.t - b.t);
   store.set('hist', HIST); store.set('stars', STARS); store.set('flags', FLAGS); store.set('daily', DAILY);
   return n;
 }
-async function syncNow(manual) {
-  if (!SYNC.code || syncing) return;
-  syncing = true; setSyncBadge('동기화 중…');
+function syncNow(manual) {
+  if (!SYNC.code) return Promise.resolve();
+  if (syncP) return syncP;
+  syncP = doSync(manual).finally(() => { syncP = null; });
+  return syncP;
+}
+async function doSync(manual) {
+  setSyncBadge('동기화 중…');
   let got = 0;
   try {
     for (let i = 0; i < 20; i++) {
@@ -199,6 +224,9 @@ async function syncNow(manual) {
       SYNC.cursor = j.cursor; SYNC.at = Date.now(); store.set('sync', SYNC);
       if (!j.more && !SYNC.outbox.length) break;
     }
+    // 오프라인에서 만든 오늘의 세트를 서버 확정 세트로 맞춘다
+    const today = '|' + dateKey() + '|';
+    for (const dk of Object.keys(DAILY)) if (dk.includes(today) && !DAILY[dk].c) { try { await claimDaily(dk, DAILY[dk].ids); } catch (e) { } }
     syncState = 'ok';
     setSyncBadge('동기화됨');
     if (manual) toast(got ? `다른 기기 기록 ${got}건을 합쳤어요` : '동기화했어요');
@@ -207,7 +235,7 @@ async function syncNow(manual) {
     syncState = 'err';
     setSyncBadge(navigator.onLine === false ? '오프라인' : '동기화 실패');
     if (manual) toast('동기화하지 못했어요: ' + e.message);
-  } finally { syncing = false; }
+  }
 }
 let onSyncRefresh = null;
 function setSyncBadge(txt) { const b = document.getElementById('sync-badge'); if (b) b.textContent = txt; }
@@ -217,7 +245,6 @@ function enableSync(code) {
   for (const h of HIST) SYNC.outbox.push({ u: h.u, k: 'h', d: h, t: h.t });
   for (const [id, v] of Object.entries(STARS)) SYNC.outbox.push({ u: uid(), k: 's', d: { id, on: v.on }, t: v.t });
   for (const [id, v] of Object.entries(FLAGS)) SYNC.outbox.push({ u: uid(), k: 'f', d: { id, on: v.on }, t: v.t });
-  for (const [key, v] of Object.entries(DAILY)) SYNC.outbox.push({ u: v.u || uid(), k: 'd', d: { key, ids: v.ids }, t: v.t });
   store.set('sync', SYNC);
   return syncNow(true);
 }
@@ -309,14 +336,14 @@ async function showSubject(key) {
       ${oxRow}
       <button class="mode" data-m="wrong" type="button" ${wn ? '' : 'disabled'}><span class="mt">오답 10문제</span><span class="ms">${wn ? `틀린 문제 ${wn}개 중 10개` : '아직 틀린 문제가 없어요'}</span></button>
       <button class="mode" data-m="units" type="button"><span class="mt">단원별</span><span class="ms">단원 골라 10문제 세트 또는 단원 집중</span></button>
-      <button class="mode" data-m="mix" type="button"><span class="mt">계속 풀기</span><span class="ms">실제 출제 비율로 끝없이 · 최근 ${d.conf.cooldown}일 안에 푼 문제 제외</span></button>
+      <button class="mode" data-m="mix" type="button"><span class="mt">계속 풀기</span><span class="ms">실제 출제 비율로 끝없이 · 맞힌 문제는 ${d.conf.cooldown}일, 틀린 문제는 ${d.conf.cooldownWrong ?? 7}일 쉬었다가 다시</span></button>
       <button class="mode" data-m="star" type="button" ${sn ? '' : 'disabled'}><span class="mt">저장한 문제</span><span class="ms">${sn}개</span></button>
     </div>`;
   on('[data-back]', showHome);
   on('.mode', async b => {
     const m = b.dataset.m;
-    if (m === 'daily') { makeDaily(key, 'q'); startSet(key, 'daily'); }
-    else if (m === 'ox') { await loadOx(key); makeDaily(key, 'ox'); startSet(key, 'ox'); }
+    if (m === 'daily') { b.disabled = true; await ensureDaily(key, 'q'); startSet(key, 'daily'); }
+    else if (m === 'ox') { b.disabled = true; await loadOx(key); await ensureDaily(key, 'ox'); startSet(key, 'ox'); }
     else if (m === 'wrong') startSet(key, 'wrong', makeWrongSet(key));
     else if (m === 'star') startSet(key, 'star', starIds(key));
     else if (m === 'units') showUnits(key);
@@ -381,7 +408,7 @@ function startStream(key, mode, code) {
 function nextStream() {
   const { key, mode, code } = S;
   const q = mode === 'focus' ? pickUnit(key, [code], S.seen)
-    : pickMix(DATA[key].items, DATA[key].conf, errRate(key), S.seen, lastById(key), DATA[key].conf.cooldown);
+    : pickMix(DATA[key].items, DATA[key].conf, errRate(key), S.seen, lastById(key));
   if (!q) { toast(mode === 'focus' ? '이 단원 문제를 다 봤어요' : '풀 문제가 없어요'); showSubject(key); return; }
   S.cur = q.id; S.seen.add(q.id); S.picked = null; S.t0 = performance.now();
   renderItem();

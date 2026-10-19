@@ -36,12 +36,32 @@ async function sync(req, env) {
   return json({ items, cursor, more: results.length === MAX_PULL, pushed: ok.length });
 }
 
+// 오늘의 세트: 먼저 등록한 기기의 세트만 인정한다(UNIQUE(key, dk) + INSERT OR IGNORE).
+// 두 기기가 동시에 눌러도 둘 다 같은 세트를 돌려받는다.
+async function daily(req, env) {
+  const code = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (code.length < 8 || code.length > 128) return json({ error: '동기화 코드는 8자 이상이어야 해요' }, 400);
+  let body;
+  try { body = await req.json(); } catch { return json({ error: '잘못된 요청' }, 400); }
+  const dk = String(body.dk || '');
+  const ids = Array.isArray(body.ids) ? body.ids.filter(x => typeof x === 'string' && x.length <= 64).slice(0, 50) : [];
+  if (!/^[a-z]{2,5}\|\d{4}-\d{2}-\d{2}\|(q|ox)$/.test(dk) || !ids.length) return json({ error: '잘못된 세트' }, 400);
+  const key = await keyOf(code);
+  await env.DB.prepare('INSERT OR IGNORE INTO daily (key, dk, ids, t) VALUES (?1, ?2, ?3, ?4)').bind(key, dk, JSON.stringify(ids), Date.now()).run();
+  const row = await env.DB.prepare('SELECT ids, t FROM daily WHERE key = ?1 AND dk = ?2').bind(key, dk).first();
+  return json({ dk, ids: JSON.parse(row.ids), t: row.t });
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname === '/api/sync') {
       if (req.method !== 'POST') return json({ error: 'POST만 받아요' }, 405);
       try { return await sync(req, env); } catch (e) { return json({ error: '서버 오류: ' + e.message }, 500); }
+    }
+    if (url.pathname === '/api/daily') {
+      if (req.method !== 'POST') return json({ error: 'POST만 받아요' }, 405);
+      try { return await daily(req, env); } catch (e) { return json({ error: '서버 오류: ' + e.message }, 500); }
     }
     if (url.pathname.startsWith('/api/')) return json({ error: '없는 주소' }, 404);
     return env.ASSETS.fetch(req);
