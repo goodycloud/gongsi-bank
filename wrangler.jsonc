@@ -1,9 +1,14 @@
 {
-  // Cloudflare Workers 정적 사이트 설정 — 빌드 없이 저장소 루트를 그대로 올린다.
+  // 정적 자산(public/) + 동기화 API(worker.js, D1).
   "name": "gongsi-bank",
+  "main": "worker.js",
   "compatibility_date": "2026-06-01",
   "assets": {
     "directory": "./public",
-    "not_found_handling": "single-page-application"
-  }
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "gongsi-bank-sync", "database_id": "a9fe8826-faf6-41c9-b781-ba51179312a2" }
+  ]
 }
