@@ -1,0 +1,9 @@
+{
+  // Cloudflare Workers 정적 사이트 설정 — 빌드 없이 저장소 루트를 그대로 올린다.
+  "name": "gongsi-bank",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "single-page-application"
+  }
+}
