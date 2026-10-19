@@ -72,6 +72,8 @@ function errRate(key) {           // 단원별 라플라스 보정 오답률 (ba
   return out;
 }
 function wrongIds(key) { const out = []; for (const [id, h] of lastById(key)) if (!h.ok && DATA[key].byId.has(id)) out.push(id); return out; }
+// 마지막에 틀린 OX 문장. OX 데이터를 아직 안 받았으면 기록만으로 센다.
+function oxWrongIds(key) { const out = []; for (const [id, h] of lastById(key, true)) if (!h.ok && (!OX[key] || OX[key].byId.has(id))) out.push(id); return out; }
 const starIds = key => Object.keys(STARS).filter(id => STARS[id].on && DATA[key] && DATA[key].byId.has(id));
 
 /* ── 출제 ──────────────────────────────────────────────── */
@@ -158,13 +160,13 @@ function dailyState(key, kind) {
   return { ids: set.ids, done };
 }
 
-function makeWrongSet(key) {
-  const er = errRate(key), last = lastById(key);
-  const ids = wrongIds(key);
+function makeWrongSet(key, ox) {
+  const er = errRate(key), last = lastById(key, ox);
+  const ids = ox ? oxWrongIds(key) : wrongIds(key), src = ox ? OX[key] : DATA[key];
   // 오래전에 틀린 것, 약한 단원 먼저
-  const w = ids.map(id => { const q = DATA[key].byId.get(id); const age = (Date.now() - last.get(id).t) / DAY; return wq(er, q) * (1 + Math.min(age, 30) / 10); });
-  const out = [], pool = ids.slice(), ww = w.slice();
-  while (out.length < SET_N && pool.length) { const x = wpick(pool, ww); const i = pool.indexOf(x); out.push(x); pool.splice(i, 1); ww.splice(i, 1); }
+  const w = ids.map(id => { const q = src.byId.get(id); const age = (Date.now() - last.get(id).t) / DAY; return wq(er, q) * (1 + Math.min(age, 30) / 10); });
+  const out = [], pool = ids.slice(), ww = w.slice(), n = ox ? OX_N : SET_N;
+  while (out.length < n && pool.length) { const x = wpick(pool, ww); const i = pool.indexOf(x); out.push(x); pool.splice(i, 1); ww.splice(i, 1); }
   return out;
 }
 
@@ -327,14 +329,16 @@ async function showSubject(key) {
   if (s.ox) {
     const os = dailyState(key, 'ox');
     const oSub = os ? (os.done.size >= os.ids.length ? `완료 · ${[...os.done.values()].filter(h => h.ok).length}/${os.ids.length} 맞음` : `${os.done.size}/${os.ids.length} 풀었음 · 이어 풀기`) : '기출 선지 20문장, O인지 X인지';
-    oxRow = `<button class="mode" data-m="ox" type="button"><span class="mt">오늘의 OX 20</span><span class="ms">${oSub}</span></button>`;
+    const own = oxWrongIds(key).length;
+    oxRow = `<button class="mode" data-m="ox" type="button"><span class="mt">오늘의 OX 20</span><span class="ms">${oSub}</span></button>
+      <button class="mode" data-m="oxwrong" type="button" ${own ? '' : 'disabled'}><span class="mt">OX 오답 20</span><span class="ms">${own ? (own > OX_N ? `틀린 OX 문장 ${own}개 중 ${OX_N}개` : `틀린 OX 문장 ${own}개 모두`) : '아직 틀린 OX 문장이 없어요'}</span></button>`;
   }
   const wn = wrongIds(key).length, sn = starIds(key).length;
   $app.innerHTML = bar(back(), s.name, `${d.items.length.toLocaleString()}문항`) + `
     <div class="modes">
       <button class="mode primary" data-m="daily" type="button"><span class="mt">오늘의 10문제</span><span class="ms">${dSub}</span></button>
       ${oxRow}
-      <button class="mode" data-m="wrong" type="button" ${wn ? '' : 'disabled'}><span class="mt">오답 10문제</span><span class="ms">${wn ? `틀린 문제 ${wn}개 중 10개` : '아직 틀린 문제가 없어요'}</span></button>
+      <button class="mode" data-m="wrong" type="button" ${wn ? '' : 'disabled'}><span class="mt">오답 10문제</span><span class="ms">${wn ? (wn > SET_N ? `틀린 문제 ${wn}개 중 ${SET_N}개` : `틀린 문제 ${wn}개 모두`) : '아직 틀린 문제가 없어요'}</span></button>
       <button class="mode" data-m="units" type="button"><span class="mt">단원별</span><span class="ms">단원 골라 10문제 세트 또는 단원 집중</span></button>
       <button class="mode" data-m="mix" type="button"><span class="mt">계속 풀기</span><span class="ms">실제 출제 비율로 끝없이 · 맞힌 문제는 ${d.conf.cooldown}일, 틀린 문제는 ${d.conf.cooldownWrong ?? 7}일 쉬었다가 다시</span></button>
       <button class="mode" data-m="star" type="button" ${sn ? '' : 'disabled'}><span class="mt">저장한 문제</span><span class="ms">${sn}개</span></button>
@@ -345,6 +349,7 @@ async function showSubject(key) {
     if (m === 'daily') { b.disabled = true; await ensureDaily(key, 'q'); startSet(key, 'daily'); }
     else if (m === 'ox') { b.disabled = true; await loadOx(key); await ensureDaily(key, 'ox'); startSet(key, 'ox'); }
     else if (m === 'wrong') startSet(key, 'wrong', makeWrongSet(key));
+    else if (m === 'oxwrong') { b.disabled = true; await loadOx(key); startSet(key, 'oxwrong', makeWrongSet(key, true)); }
     else if (m === 'star') startSet(key, 'star', starIds(key));
     else if (m === 'units') showUnits(key);
     else startStream(key, 'mix');
@@ -387,7 +392,7 @@ function showUnits(key) {
 
 /* ── 풀기: 세트(정해진 목록)와 스트림(끝없이) ───────────────── */
 let S = null;   // {key, mode, ox, list?, idx, res:Map(id→h), code?, seen:Set, cur, picked, t0, n, ok}
-const MODE_NAME = { daily: '오늘의 10문제', ox: '오늘의 OX 20', wrong: '오답 10문제', unit: '단원 10문제', star: '저장한 문제', mix: '계속 풀기', focus: '단원 집중' };
+const MODE_NAME = { daily: '오늘의 10문제', ox: '오늘의 OX 20', oxwrong: 'OX 오답 20', wrong: '오답 10문제', unit: '단원 10문제', star: '저장한 문제', mix: '계속 풀기', focus: '단원 집중' };
 
 function startSet(key, mode, ids, code) {
   let list = ids, res = new Map();
@@ -396,7 +401,7 @@ function startSet(key, mode, ids, code) {
     list = st.ids; res = new Map(st.done);
   }
   if (!list || !list.length) { toast('풀 문제가 없어요'); return; }
-  S = { key, mode, ox: mode === 'ox', list, res, code, seen: new Set(), n: 0, ok: 0 };
+  S = { key, mode, ox: mode === 'ox' || mode === 'oxwrong', list, res, code, seen: new Set(), n: 0, ok: 0 };
   const i = list.findIndex(id => !res.has(id));
   if (i < 0) { showResults(); return; }
   S.idx = i; showItem();
