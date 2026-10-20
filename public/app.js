@@ -471,7 +471,8 @@ function questionHtml(key, q, picked) {
     const ok = picked === q.a;
     after += `<div class="result ${ok ? 'ok' : 'no'}">${ok ? '맞음' : '틀림'} · 정답 ${CIRC[q.a - 1]}${ok ? '' : ` (고른 답 ${CIRC[picked - 1]})`}</div>`;
     if (q.why) after += `<div class="why"><b>핵심</b> ${esc(q.why)}</div>`;
-    if (!q.ex) after += `<div class="noex">이 문항은 선지별 해설을 준비 중이에요.</div>`;
+    if (q.sol) after += solHtml(q.sol);
+    if (!q.ex && !q.sol) after += `<div class="noex">이 문항은 해설을 준비 중이에요.</div>`;
   }
   return `<article class="sheet">
       <div class="meta"><span class="area">${esc(q.area)}</span><span>${esc(unit)}</span>
@@ -480,9 +481,20 @@ function questionHtml(key, q, picked) {
       ${blocksHtml(q.blocks)}
       ${hdr}<ol class="ch">${opts}</ol>
       ${after}
-      ${picked ? toolsHtml(q.id, !!(q.ex || q.why)) : ''}
+      ${picked ? toolsHtml(q.id, !!(q.ex || q.why || q.sol)) : ''}
       <div class="meta">${esc(q.src)}</div>
     </article>`;
+}
+// 영어: 선지별 대신 문항 전체 해설 (핵심 문장 해석 → 풀이 → 오답 → 어휘)
+function solHtml(s) {
+  const key = (s.key || []).map(([en, ko]) => `<p class="en">${esc(en)}</p><p class="ko">${esc(ko)}</p>`).join('');
+  const voc = (s.voc || []).map(([w, m]) => `<span><i>${esc(w)}</i> ${esc(m)}</span>`).join('');
+  return `<div class="sol">
+      ${key ? `<div class="sk"><b>핵심 문장</b>${key}</div>` : ''}
+      <div><b>풀이</b><p>${esc(s.exp)}</p></div>
+      ${s.wrong ? `<div><b>오답</b><p>${esc(s.wrong)}</p></div>` : ''}
+      ${voc ? `<div><b>어휘</b><p class="voc">${voc}</p></div>` : ''}
+    </div>`;
 }
 function oxHtml(key, o, picked) {
   const unit = DATA[key].conf.units[o.code] || o.code;
