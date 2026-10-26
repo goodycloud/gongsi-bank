@@ -455,8 +455,20 @@ function itemOf(id) { return S.ox ? OX[S.key].byId.get(id) : DATA[S.key].byId.ge
 
 function blocksHtml(blocks) {
   return blocks.map(b => {
-    if (b.t === 'text') return `<div class="psg">${esc(b.v)}</div>`;
-    if (b.t === 'grid') return `<div class="grid-wrap"><table class="g">${b.v.map(r => '<tr>' + r.map(c => `<td>${esc(c)}</td>`).join('') + '</tr>').join('')}</table></div>`;
+    if (b.t === 'text') return /^<표>/.test(b.v) && !b.v.includes('\n') ? `<div class="gcap">${esc(b.v)}</div>` : `<div class="psg">${esc(b.v)}</div>`;
+    if (b.t === 'grid') {                 // span: 병합 셀 [행, 열, 행수, 열수]. 가려진 칸은 건너뛴다
+      const sp = new Map(), cov = new Set();
+      for (const [r, c, rs, cs] of b.span || []) {
+        sp.set(r + ',' + c, [rs, cs]);
+        for (let i = r; i < r + rs; i++) for (let j = c; j < c + cs; j++) if (i !== r || j !== c) cov.add(i + ',' + j);
+      }
+      const td = (x, i, j) => {
+        if (cov.has(i + ',' + j)) return '';
+        const [rs, cs] = sp.get(i + ',' + j) || [1, 1];
+        return `<td${rs > 1 ? ` rowspan="${rs}"` : ''}${cs > 1 ? ` colspan="${cs}"` : ''}>${esc(x)}</td>`;
+      };
+      return `<div class="grid-wrap"><table class="g">${b.v.map((r, i) => '<tr>' + r.map((x, j) => td(x, i, j)).join('') + '</tr>').join('')}</table></div>`;
+    }
     const inner = b.v.map(x => x.t === 'img' ? `<img src="data/img/${encodeURIComponent(x.v)}" alt="지문 그림">` : `<div>${esc(x.v)}</div>`).join('');
     return `<div class="psg${b.t === 'given' ? ' given' : ''}">${b.t === 'given' ? '<span class="lbl">주어진 글</span>' : ''}${inner}</div>`;
   }).join('');

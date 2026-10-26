@@ -62,8 +62,10 @@ button{font:inherit;color:inherit}
 .psg img{display:block;background:#fff;border-radius:2px}
 .psg u{text-underline-offset:3px}
 .grid-wrap{overflow-x:auto}
-table.g{border-collapse:collapse;font-family:var(--sans);font-size:14.5px;white-space:normal}
-table.g td{border:1px solid var(--rule);padding:4px 8px}
+table.g{border-collapse:collapse;font-family:var(--sans);font-size:14.5px;line-height:1.45;white-space:normal;width:100%}
+table.g td{border:1px solid color-mix(in srgb,var(--muted) 45%,transparent);padding:7px 8px;text-align:center;vertical-align:middle}
+.gcap{font-family:var(--sans);font-size:14px;font-weight:600;margin:4px 0 -6px}
+table.g tr:first-child td{background:color-mix(in srgb,var(--muted) 12%,transparent);font-weight:600}
 ol.ch{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .opt{display:flex;flex-direction:column;border-radius:4px}
 .opt>button{all:unset;cursor:pointer;display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:4px;font-family:var(--serif);font-size:16px;line-height:1.65;min-width:0}
