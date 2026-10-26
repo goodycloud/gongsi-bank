@@ -1,9 +1,9 @@
 /* 오프라인용 캐시.
    인터넷이 되면 항상 서버에서 먼저 받는다(바뀌지 않았으면 304라 가볍다). 3초 안에 못 받거나 오프라인이면 저장본을 쓴다.
    그래서 새 해설·새 기능이 다음 실행을 기다리지 않고 바로 보인다. /api/는 건드리지 않는다. */
-const V = 'gb-v7';
+const V = 'gb-v8';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
-  'data/kor.json', 'data/eng.json', 'data/law.json', 'data/adm.json', 'data/ox_law.json', 'data/ox_adm.json'];
+  'data/kor.json', 'data/eng.json', 'data/law.json', 'data/adm.json', 'data/ox_law.json', 'data/ox_adm.json', 'data/concept_law.json', 'data/concept_adm.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

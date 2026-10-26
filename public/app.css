@@ -168,3 +168,54 @@ ol.results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 .bar .sub{white-space:nowrap;flex:none}
 .bar h1.sm{flex:1}
 .opt.right .ex .v{color:var(--ok)}
+
+/* ── 개념 카드 ── */
+.badge{font-family:var(--sans);font-size:11px;font-weight:600;color:var(--omr);border:1px solid var(--omr);border-radius:999px;padding:1px 7px;vertical-align:3px;margin-left:4px}
+.chip.con{border-color:var(--omr);color:var(--omr)}
+.con-tools{align-items:center}
+.con-tools .note{margin-right:2px}
+.cintro{display:flex;flex-direction:column;gap:6px}
+.steps{list-style:none;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap;counter-reset:st}
+.steps li{counter-increment:st;font-size:12.5px;padding:5px 10px;border-radius:999px;background:var(--sheet);border:1px solid var(--rule);color:var(--muted)}
+.steps li::before{content:counter(st) ". ";font-weight:600}
+.steps li.now{border-color:var(--omr);color:var(--omr);font-weight:600}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:var(--sheet)}
+.seg button{all:unset;cursor:pointer;text-align:center;padding:9px 0;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper);font-weight:600}
+.seg button:focus-visible{outline:2px solid var(--omr);outline-offset:-2px}
+.ccard{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px;scroll-margin-top:64px}
+.ccard.focus{border-color:var(--omr);box-shadow:inset 3px 0 0 var(--omr)}
+.ch-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ch-h h2{font-family:var(--serif);font-size:17px;margin:0;flex:1;min-width:0}
+.ch-h .cnt{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ccard ul{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px;font-size:14.5px;line-height:1.65}
+.ccard li{overflow-wrap:anywhere}
+mark.cz{background:none;color:inherit;font-weight:700;box-shadow:inset 0 -.42em 0 var(--omr-soft)}
+button.cz{all:unset;cursor:pointer;font-weight:700;border-radius:3px;background:var(--rule);color:transparent;padding:0 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+button.cz.show{background:var(--omr-soft);color:var(--ink)}
+button.cz:focus-visible{outline:2px solid var(--omr)}
+.vd{font-weight:700}
+.vd.o{color:var(--ok)} .vd.x{color:var(--bad)}
+button.vdz:not(.show) .vd{color:transparent}
+.trap{border-left:3px solid var(--bad);background:var(--bad-soft);padding:9px 12px;border-radius:0 4px 4px 0}
+.trap b{display:block;font-size:12.5px;color:var(--bad);margin-bottom:4px}
+.trap ul{font-size:13.5px;gap:5px}
+table.ct{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5}
+table.ct th{text-align:left;font-weight:600;font-size:12px;color:var(--muted);padding:6px;border-bottom:1.5px solid var(--rule);background:var(--paper)}
+table.ct td{padding:7px 6px;border-bottom:1px solid var(--rule);vertical-align:top;overflow-wrap:anywhere}
+table.ct td.rh{font-weight:600;white-space:nowrap}
+/* 세 칸 이상 표는 좁은 화면에서 행마다 카드처럼 쌓는다 (오른쪽 칸이 잘리지 않게) */
+@media (max-width:560px){
+  table.ct.wide,table.ct.wide tbody,table.ct.wide tr,table.ct.wide td{display:block}
+  table.ct.wide tr:first-child{display:none}
+  table.ct.wide tr{padding:8px 0;border-bottom:1px solid var(--rule)}
+  table.ct.wide td{border:0;padding:2px 0}
+  table.ct.wide td.rh{font-size:14px;padding-bottom:4px}
+  table.ct.wide td:not(:first-child){display:grid;grid-template-columns:5em 1fr;gap:6px}
+  table.ct.wide td:not(:first-child)::before{content:attr(data-h);font-size:11.5px;color:var(--muted);padding-top:1px}
+  table.ct.wide td[data-h=""]::before{content:none}
+}
+.memo{display:flex;flex-direction:column;gap:4px}
+.memo span{font-size:12px;color:var(--muted)}
+.memo textarea{font-family:var(--sans);font-size:14px;line-height:1.55;padding:8px 10px;border:1px dashed var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);resize:vertical}
+.memo textarea:focus-visible{outline:2px solid var(--omr);border-style:solid}

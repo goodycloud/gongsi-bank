@@ -29,9 +29,10 @@ let STARS = upgradeMap(store.get('stars', {}));
 let FLAGS = upgradeMap(store.get('flags', {}));
 let DAILY = store.get('daily', {});    // {"law|2026-10-20|q": {ids, t}}
 let SYNC = store.get('sync', { code: '', cursor: 0, outbox: [], at: 0 });
+let MEMO = store.get('memo', {});      // 개념 카드 메모 {cardId: {v, t}} — 기기 간에 마지막에 고친 쪽이 이긴다
 { let fix = false; for (const h of HIST) if (!h.u) { h.u = uid(); fix = true; } if (fix) store.set('hist', HIST); }
 const HSEEN = new Set(HIST.map(h => h.u));
-const DATA = {}, OX = {};
+const DATA = {}, OX = {}, CON = {};
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
@@ -53,6 +54,19 @@ async function loadOx(key) {
   const d = await r.json();
   d.byId = new Map(d.items.map(o => [o.id, o]));
   return (OX[key] = d);
+}
+
+// 개념 카드 (data/concept_{key}.json). 없으면 빈 것으로 둔다.
+async function loadConcept(key) {
+  if (CON[key]) return CON[key];
+  let d = { units: {} };
+  try { const r = await fetch('data/concept_' + key + '.json'); if (r.ok) d = await r.json(); } catch (e) { }
+  d.byQ = new Map(); d.card = new Map();
+  for (const [code, u] of Object.entries(d.units)) for (const c of u.cards) {
+    d.card.set(c.id, { code, c });
+    for (const q of c.q || []) { if (!d.byQ.has(q)) d.byQ.set(q, []); d.byQ.get(q).push({ code, c }); }
+  }
+  return (CON[key] = d);
 }
 
 /* ── 기록 조회 ─────────────────────────────────────────── */
@@ -200,9 +214,10 @@ function applyRemote(items) {
       const map = e.k === 's' ? STARS : FLAGS, cur = map[e.d.id];
       if (!cur || e.t > cur.t) map[e.d.id] = { on: !!e.d.on, t: e.t };
     }   // (첫 동기화 버전의 'd' 이벤트는 이제 /api/daily가 맡으므로 무시한다)
+    else if (e.k === 'm') { const cur = MEMO[e.d.id]; if (!cur || e.t > cur.t) MEMO[e.d.id] = { v: String(e.d.v || ''), t: e.t }; }
   }
   if (n) HIST.sort((a, b) => a.t - b.t);
-  store.set('hist', HIST); store.set('stars', STARS); store.set('flags', FLAGS); store.set('daily', DAILY);
+  store.set('hist', HIST); store.set('stars', STARS); store.set('flags', FLAGS); store.set('daily', DAILY); store.set('memo', MEMO);
   return n;
 }
 function syncNow(manual) {
@@ -323,6 +338,8 @@ async function showSubject(key) {
   onSyncRefresh = () => showSubject(key); setDock('');
   await load(key);
   const s = SUBJ[key], d = DATA[key];
+  const con = s.ox ? await loadConcept(key) : null;
+  const cu = con ? Object.keys(con.units).length : 0;
   const ds = dailyState(key, 'q');
   const dSub = ds ? (ds.done.size >= ds.ids.length ? `완료 · ${[...ds.done.values()].filter(h => h.ok).length}/${ds.ids.length} 맞음` : `${ds.done.size}/${ds.ids.length} 풀었음 · 이어 풀기`) : '실제 출제 비율로 10문제';
   let oxRow = '';
@@ -337,6 +354,7 @@ async function showSubject(key) {
   $app.innerHTML = bar(back(), s.name, `${d.items.length.toLocaleString()}문항`) + `
     <div class="modes">
       <button class="mode primary" data-m="daily" type="button"><span class="mt">오늘의 10문제</span><span class="ms">${dSub}</span></button>
+      ${cu ? `<button class="mode" data-m="concept" type="button"><span class="mt">개념 카드 <span class="badge">샘플</span></span><span class="ms">책 읽은 뒤 카드로 확인 → 그 단원 기출 · ${cu}단원</span></button>` : ''}
       ${oxRow}
       <button class="mode" data-m="wrong" type="button" ${wn ? '' : 'disabled'}><span class="mt">오답 10문제</span><span class="ms">${wn ? (wn > SET_N ? `틀린 문제 ${wn}개 중 ${SET_N}개` : `틀린 문제 ${wn}개 모두`) : '아직 틀린 문제가 없어요'}</span></button>
       <button class="mode" data-m="units" type="button"><span class="mt">단원별</span><span class="ms">단원 골라 10문제 세트 또는 단원 집중</span></button>
@@ -352,6 +370,7 @@ async function showSubject(key) {
     else if (m === 'oxwrong') { b.disabled = true; await loadOx(key); startSet(key, 'oxwrong', makeWrongSet(key, true)); }
     else if (m === 'star') startSet(key, 'star', starIds(key));
     else if (m === 'units') showUnits(key);
+    else if (m === 'concept') showConceptList(key);
     else startStream(key, 'mix');
   });
   window.scrollTo(0, 0);
@@ -375,7 +394,7 @@ function showUnits(key) {
       const acc = n ? ok / n : null;
       return `<li class="unit"><div class="un"><span class="unm">${esc(conf.units[c] || c)}</span>
           <span class="ust">${d.unitCount[c]}문항 · 푼 것 ${n}${n ? ` · 정답률 ${pct(acc)}` : ''}</span></div>
-        <div class="ubtn"><button class="chip" data-c="${esc(c)}" data-u="set" type="button">10문제</button>
+        <div class="ubtn">${CON[key] && CON[key].units[c] ? `<button class="chip con" data-c="${esc(c)}" data-u="con" type="button">개념</button>` : ''}<button class="chip" data-c="${esc(c)}" data-u="set" type="button">10문제</button>
         <button class="chip" data-c="${esc(c)}" data-u="focus" type="button">집중</button></div></li>`;
     }).join('');
     return rows ? `<p class="sec-h">${esc(area)} · 출제 ${Math.round(conf.blueprint[area] * 100)}%</p><ul class="units">${rows}</ul>` : '';
@@ -384,6 +403,7 @@ function showUnits(key) {
   on('[data-back]', () => showSubject(key));
   on('[data-u]', b => {
     const c = b.dataset.c;
+    if (b.dataset.u === 'con') { showConcept(key, c, null, () => showUnits(key)); return; }
     if (b.dataset.u === 'set') { const ex = new Set(), ids = []; for (let i = 0; i < SET_N; i++) { const q = pickUnit(key, [c], ex); if (!q) break; ex.add(q.id); ids.push(q.id); } startSet(key, 'unit', ids, c); }
     else startStream(key, 'focus', c);
   });
@@ -392,16 +412,17 @@ function showUnits(key) {
 
 /* ── 풀기: 세트(정해진 목록)와 스트림(끝없이) ───────────────── */
 let S = null;   // {key, mode, ox, list?, idx, res:Map(id→h), code?, seen:Set, cur, picked, t0, n, ok}
-const MODE_NAME = { daily: '오늘의 10문제', ox: '오늘의 OX 20', oxwrong: 'OX 오답 20', wrong: '오답 10문제', unit: '단원 10문제', star: '저장한 문제', mix: '계속 풀기', focus: '단원 집중' };
+const MODE_NAME = { daily: '오늘의 10문제', ox: '오늘의 OX 20', oxwrong: 'OX 오답 20', wrong: '오답 10문제', unit: '단원 10문제', star: '저장한 문제', mix: '계속 풀기', focus: '단원 집중', cunit: '단원 기출', cq: '개념 기출', cox: '개념 OX' };
+const OX_MODES = new Set(['ox', 'oxwrong', 'cox']);
 
-function startSet(key, mode, ids, code) {
+function startSet(key, mode, ids, code, ret) {
   let list = ids, res = new Map();
   if (mode === 'daily' || mode === 'ox') {
     const st = dailyState(key, mode === 'ox' ? 'ox' : 'q');
     list = st.ids; res = new Map(st.done);
   }
   if (!list || !list.length) { toast('풀 문제가 없어요'); return; }
-  S = { key, mode, ox: mode === 'ox' || mode === 'oxwrong', list, res, code, seen: new Set(), n: 0, ok: 0 };
+  S = { key, mode, ox: OX_MODES.has(mode), list, res, code, ret, seen: new Set(), n: 0, ok: 0 };
   const i = list.findIndex(id => !res.has(id));
   if (i < 0) { showResults(); return; }
   S.idx = i; showItem();
@@ -481,7 +502,7 @@ function questionHtml(key, q, picked) {
       ${blocksHtml(q.blocks)}
       ${hdr}<ol class="ch">${opts}</ol>
       ${after}
-      ${picked ? toolsHtml(q.id, !!(q.ex || q.why || q.sol)) : ''}
+      ${picked ? toolsHtml(q.id, !!(q.ex || q.why || q.sol)) + conceptChips(key, q.id) : ''}
       <div class="meta">${esc(q.src)}</div>
     </article>`;
 }
@@ -503,7 +524,7 @@ function oxHtml(key, o, picked) {
     const ok = (picked === 'O') === o.o;
     after = `<div class="result ${ok ? 'ok' : 'no'}">${ok ? '맞음' : '틀림'} · 이 문장은 ${o.o ? 'O (옳음)' : 'X (옳지 않음)'}</div>
       ${o.ex ? `<div class="why"><b>해설</b> ${esc(exLabel(o.ex)[1])}</div>` : '<div class="noex">해설은 준비 중이에요. 원문 문항에서 다른 선지와 함께 볼 수 있어요.</div>'}
-      ${toolsHtml(o.id, !!o.ex, true)}`;
+      ${toolsHtml(o.id, !!o.ex, true)}${conceptChips(key, o.q)}`;
   }
   const btn = v => {
     let cls = 'oxb';
@@ -538,11 +559,11 @@ function renderItem() {
   const { key } = S;
   const it = itemOf(S.cur);
   const prog = S.list ? `${Math.min(S.res.size + (S.picked ? 0 : 1), S.list.length)} / ${S.list.length}` : `이번 ${S.n}문제${S.n ? ` · ${S.ok}개 맞음` : ''}`;
-  const title = S.mode === 'unit' || S.mode === 'focus' ? (DATA[key].conf.units[S.code] || S.code) : MODE_NAME[S.mode];
-  $app.innerHTML = `<div class="bar">${back('← ' + SUBJ[key].name)}<h1 class="sm">${esc(title)}</h1><span class="sub">${prog}</span></div>`
+  const title = S.mode === 'unit' || S.mode === 'focus' || S.mode === 'cunit' ? (DATA[key].conf.units[S.code] || S.code) : MODE_NAME[S.mode];
+  $app.innerHTML = `<div class="bar">${back(S.ret ? '← 개념' : '← ' + SUBJ[key].name)}<h1 class="sm">${esc(title)}</h1><span class="sub">${prog}</span></div>`
     + (S.list ? `<div class="pdots" aria-hidden="true">${S.list.map((id, j) => { const h = S.res.get(id); return `<i class="${h ? (h.ok ? 'ok' : 'no') : ''}${j === S.idx ? ' cur' : ''}"></i>`; }).join('')}</div>` : '')
     + (S.ox ? oxHtml(key, it, S.picked) : questionHtml(key, it, S.picked));
-  on('[data-back]', () => showSubject(key));
+  on('[data-back]', () => S.ret ? S.ret() : showSubject(key));
   on('.opt>button', b => answer(+b.dataset.i));
   on('[data-ox]', b => answer(b.dataset.ox));
   on('[data-tool]', b => {
@@ -550,6 +571,7 @@ function renderItem() {
     if (t === 'star') toggleMap(STARS, 'stars', it.id);
     else if (t === 'flag') toast(toggleMap(FLAGS, 'flags', it.id) ? '신고했어요. 다음에 해설을 고칠 때 모아서 봐요' : '신고를 취소했어요');
     else if (t === 'orig') { showOrig(key, it.q); return; }
+    else if (t === 'concept') { showConcept(key, b.dataset.code, b.dataset.cid, renderItem); return; }
     renderItem();
   });
   if (S.picked) {
@@ -579,7 +601,10 @@ function showOrig(key, qid) {
     + (h ? '' : '<p class="note">아직 이 문항을 풀지 않았어요. 정답과 해설이 같이 보여요.</p>')
     + questionHtml(key, q, h ? h.p : q.a);
   on('[data-back]', renderItem);
-  on('[data-tool]', b => { if (b.dataset.tool === 'star') toggleMap(STARS, 'stars', q.id); else toggleMap(FLAGS, 'flags', q.id); showOrig(key, qid); });
+  on('[data-tool]', b => {
+    if (b.dataset.tool === 'concept') { showConcept(key, b.dataset.code, b.dataset.cid, () => showOrig(key, qid)); return; }
+    if (b.dataset.tool === 'star') toggleMap(STARS, 'stars', q.id); else toggleMap(FLAGS, 'flags', q.id); showOrig(key, qid);
+  });
   window.scrollTo(0, 0);
 }
 
@@ -592,12 +617,13 @@ function showResults() {
       <span class="rt"><span class="rl">${esc(label.replace(/[\x02\x03]/g, '').slice(0, 70))}</span><span class="rs">${esc(it.area)} · ${esc(it.src)}</span></span></button></li>`;
   }).join('');
   const ok = [...S.res.values()].filter(h => h.ok).length;
-  setDock(`<button class="btn" id="again" type="button">${SUBJ[key].name}으로</button>`);
-  $app.innerHTML = `<div class="bar">${back('← ' + SUBJ[key].name)}<h1 class="sm">${MODE_NAME[S.mode]}</h1><span class="sub">${ok} / ${S.list.length} 맞음</span></div>
+  const ret = S.ret || (() => showSubject(key));
+  setDock(`<button class="btn" id="again" type="button">${S.ret ? '개념 카드로' : SUBJ[key].name + '으로'}</button>`);
+  $app.innerHTML = `<div class="bar">${back(S.ret ? '← 개념' : '← ' + SUBJ[key].name)}<h1 class="sm">${MODE_NAME[S.mode]}</h1><span class="sub">${ok} / ${S.list.length} 맞음</span></div>
     <div class="card"><h2>${ok} / ${S.list.length}</h2><p class="note">문항을 누르면 다시 볼 수 있어요.</p></div>
     <ol class="results">${rows}</ol>`;
-  on('[data-back]', () => showSubject(key));
-  document.getElementById('again').onclick = () => showSubject(key);
+  on('[data-back]', ret);
+  document.getElementById('again').onclick = ret;
   on('.rrow', b => reviewAt(+b.dataset.j));
   window.scrollTo(0, 0);
 }
@@ -609,10 +635,112 @@ function reviewAt(j) {
   on('[data-back]', showResults);
   on('[data-tool]', b => {
     const t = b.dataset.tool;
+    if (t === 'concept') { showConcept(key, b.dataset.code, b.dataset.cid, () => reviewAt(j)); return; }
     if (t === 'star') toggleMap(STARS, 'stars', it.id); else if (t === 'flag') toggleMap(FLAGS, 'flags', it.id); else if (t === 'orig') { showOrig(key, it.q); return; }
     reviewAt(j);
   });
   window.scrollTo(0, 0);
+}
+
+/* ── 개념 카드 ─────────────────────────────────────────── */
+// 카드 문장의 {{…}}는 핵심어. 읽기에서는 밑줄 강조, 가리기에서는 눌러야 보인다.
+// 함정 문장의 '→ O / → X'도 가리기에서는 판정을 숨겨 OX처럼 떠올리게 한다.
+let CHIDE = false;
+function cloze(t, hide) {
+  let h = esc(t).replace(/\{\{(.+?)\}\}/g, (_, w) => hide ? `<button class="cz" data-cz type="button" aria-label="가린 낱말 보기">${w}</button>` : `<mark class="cz">${w}</mark>`);
+  h = h.replace(/→ (O|X)\b(.*)$/, (_, v, rest) => {
+    const tag = `<span class="vd ${v === 'O' ? 'o' : 'x'}">${v}</span>${rest}`;
+    return '→ ' + (hide ? `<button class="cz vdz" data-cz type="button" aria-label="판정 보기">${tag}</button>` : tag);
+  });
+  return h;
+}
+function conceptChips(key, qid) {
+  const con = CON[key]; if (!con) return '';
+  const hits = con.byQ.get(qid) || [];
+  if (!hits.length) return '';
+  return `<div class="tools con-tools"><span class="note">관련 개념</span>${hits.slice(0, 3).map(({ code, c }) =>
+    `<button class="chip con" data-tool="concept" data-code="${esc(code)}" data-cid="${esc(c.id)}" type="button">${esc(c.t)}</button>`).join('')}</div>`;
+}
+function unitIds(key, code) {          // 단원 기출 전부. 안 푼 것·틀린 것이 앞에 오도록 pickUnit 순서로.
+  const ex = new Set(), ids = [];
+  for (;;) { const q = pickUnit(key, [code], ex); if (!q) break; ex.add(q.id); ids.push(q.id); }
+  return ids;
+}
+async function showConceptList(key) {
+  onSyncRefresh = () => showConceptList(key); setDock('');
+  const con = await loadConcept(key), d = DATA[key], last = lastById(key);
+  const rows = Object.entries(con.units).map(([code, u]) => {
+    const ids = d.items.filter(q => q.code === code).map(q => q.id);
+    const done = ids.filter(id => last.has(id)), ok = done.filter(id => last.get(id).ok);
+    return `<li class="unit"><div class="un"><span class="unm">${esc(u.title)}</span>
+        <span class="ust">${esc(u.book)} · 카드 ${u.cards.length}장 · 기출 ${ids.length}문항${done.length ? ` · 정답률 ${pct(ok.length / done.length)}` : ''}</span></div>
+      <div class="ubtn"><button class="chip con" data-c="${esc(code)}" type="button">열기</button></div></li>`;
+  }).join('');
+  $app.innerHTML = bar(back('← ' + SUBJ[key].name), '개념 카드') + `
+    <p class="note">샘플로 ${Object.keys(con.units).length}단원만 만들었어요. 카드 모양과 흐름이 괜찮으면 나머지 단원도 같은 형식으로 채워요.</p>
+    <ul class="units">${rows}</ul>`;
+  on('[data-back]', () => showSubject(key));
+  on('[data-c]', b => showConcept(key, b.dataset.c, null, () => showConceptList(key)));
+  window.scrollTo(0, 0);
+}
+async function showConcept(key, code, focusId, ret) {
+  await load(key); const con = await loadConcept(key);
+  const u = con.units[code]; if (!u) { toast('이 단원은 아직 개념 카드가 없어요'); return; }
+  ret = ret || (() => showConceptList(key));
+  onSyncRefresh = null;
+  const d = DATA[key], last = lastById(key);
+  const allIds = d.items.filter(q => q.code === code).map(q => q.id);
+  const stat = ids => { const done = ids.filter(id => last.has(id)); const ok = done.filter(id => last.get(id).ok).length; return { n: ids.length, done: done.length, ok }; };
+  const st = stat(allIds);
+  const bookShort = u.book.split('·')[0].trim();
+  const steps = u.style === 'unpack'
+    ? [`${bookShort} 읽기`, '이 카드 읽고 메모 한두 줄', '단원 기출 풀기']
+    : [`${bookShort} 개념 읽기`, '이 카드 2~3분 · 가리기로 확인', '단원 기출 풀기'];
+  const cards = u.cards.map(c => {
+    const cs = stat(c.q || []);
+    const memo = MEMO[c.id] ? MEMO[c.id].v : '';
+    const rh = c.tbl && c.tbl.r.every(r => String(r[0] || '').length <= 14);   // 첫 칸이 짧으면 행 머리로
+    const tbl = c.tbl ? `<div class="grid-wrap"><table class="ct${c.tbl.h.length > 2 ? ' wide' : ''}"><tr>${c.tbl.h.map(h => `<th>${esc(h)}</th>`).join('')}</tr>${c.tbl.r.map(r => '<tr>' + r.map((x, j) => `<td data-h="${esc(c.tbl.h[j] || '')}"${j === 0 && rh ? ' class="rh"' : ''}>${cloze(x, false)}</td>`).join('') + '</tr>').join('')}</table></div>` : '';
+    return `<article class="ccard${c.id === focusId ? ' focus' : ''}" id="cc-${esc(c.id)}">
+      <div class="ch-h"><h2>${esc(c.t)}</h2>${cs.n ? `<span class="cnt">기출 ${cs.n}${cs.done ? ` · ${cs.ok}/${cs.done} 맞힘` : ''}</span>` : ''}</div>
+      ${c.pts && c.pts.length ? `<ul class="pts">${c.pts.map(p => `<li>${cloze(p, CHIDE)}</li>`).join('')}</ul>` : ''}
+      ${tbl}
+      ${c.trap && c.trap.length ? `<div class="trap"><b>기출 함정</b><ul>${c.trap.map(p => `<li>${cloze(p, CHIDE)}</li>`).join('')}</ul></div>` : ''}
+      ${u.style === 'unpack' ? `<label class="memo"><span>내 메모</span><textarea data-memo="${esc(c.id)}" rows="2" placeholder="내 말로 한두 줄 (모든 기기에 동기화)">${esc(memo)}</textarea></label>` : ''}
+      ${cs.n ? `<div class="tools"><button class="chip" data-cq="${esc(c.id)}" type="button">이 개념 기출 ${cs.n}</button><button class="chip" data-cox="${esc(c.id)}" type="button">이 개념 OX</button></div>` : ''}
+    </article>`;
+  }).join('');
+  $app.innerHTML = bar(back('← 뒤로'), esc(u.title.split('(')[0].trim()), esc(bookShort)) + `
+    <div class="cintro"><ol class="steps">${steps.map((t, i) => `<li class="${i === 1 ? 'now' : ''}">${esc(t)}</li>`).join('')}</ol>
+      <p class="note">${esc(u.intro)}</p></div>
+    <div class="seg" role="group" aria-label="보기 방식">
+      <button type="button" data-hide="0" aria-pressed="${!CHIDE}">읽기</button>
+      <button type="button" data-hide="1" aria-pressed="${CHIDE}">가리고 떠올리기</button></div>
+    ${cards}
+    <p class="note">카드는 2013~2026 기출에서 실제로 물은 것만 모아 새로 쓴 정리예요. 법 개정은 출제 당시 기준이라, 바뀐 곳은 카드에 따로 적어요.</p>`;
+  setDock(`<button class="btn primary" id="cu" type="button">단원 기출 풀기 · ${st.n}문항${st.done ? ` (푼 것 ${st.done})` : ''}</button>`);
+  const again = () => showConcept(key, code, null, ret);
+  on('[data-back]', ret);
+  on('[data-hide]', b => { CHIDE = b.dataset.hide === '1'; const y = window.scrollY; again().then(() => window.scrollTo(0, y)); });
+  on('[data-cz]', b => b.classList.toggle('show'));
+  on('[data-cq]', b => { const c = con.card.get(b.dataset.cq).c; startSet(key, 'cq', c.q.slice(), code, () => showConcept(key, code, c.id, ret)); });
+  on('[data-cox]', async b => {
+    const c = con.card.get(b.dataset.cox).c; b.disabled = true;
+    const ox = await loadOx(key), qs = new Set(c.q);
+    const ids = ox.items.filter(o => qs.has(o.q)).map(o => o.id);
+    if (!ids.length) { toast('이 개념은 OX로 쪼갤 수 있는 문장이 없어요'); b.disabled = false; return; }
+    startSet(key, 'cox', ids, code, () => showConcept(key, code, c.id, ret));
+  });
+  $app.querySelectorAll('[data-memo]').forEach(ta => {
+    ta.onchange = () => {
+      const id = ta.dataset.memo, v = ta.value.trim(), t = Date.now();
+      MEMO[id] = { v, t }; store.set('memo', MEMO); emit({ k: 'm', d: { id, v }, t });
+      toast(SYNC.code ? '메모를 저장했어요' : '이 기기에만 저장했어요');
+    };
+  });
+  document.getElementById('cu').onclick = () => startSet(key, 'cunit', unitIds(key, code), code, () => showConcept(key, code, null, ret));
+  if (focusId) { const el = document.getElementById('cc-' + focusId); if (el) el.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0); }
+  else window.scrollTo(0, 0);
 }
 
 /* ── 동기화 설정 ───────────────────────────────────────── */
@@ -702,7 +830,7 @@ async function showStats() {
 }
 
 function exportBackup() {
-  const data = JSON.stringify({ v: 2, at: new Date().toISOString(), hist: HIST, stars: STARS, flags: FLAGS, daily: DAILY });
+  const data = JSON.stringify({ v: 2, at: new Date().toISOString(), hist: HIST, stars: STARS, flags: FLAGS, daily: DAILY, memo: MEMO });
   const name = '9급문제은행_백업_' + dateKey() + '.json';
   const blob = new Blob([data], { type: 'application/json' });
   const file = new File([blob], name, { type: 'application/json' });
@@ -723,7 +851,8 @@ async function importBackup(f) {
     HIST.sort((a, b) => a.t - b.t);
     const merge = (dst, src) => { for (const [id, v0] of Object.entries(upgradeMap(src || {}))) if (!dst[id] || v0.t > dst[id].t) dst[id] = v0; };
     merge(STARS, d.stars); merge(FLAGS, d.flags);
-    store.set('hist', HIST); store.set('stars', STARS); store.set('flags', FLAGS);
+    for (const [id, m] of Object.entries(d.memo || {})) if (!MEMO[id] || m.t > MEMO[id].t) MEMO[id] = m;
+    store.set('hist', HIST); store.set('stars', STARS); store.set('flags', FLAGS); store.set('memo', MEMO);
     toast(`기록 ${add}건을 합쳤어요`);
     showStats();
   } catch (e) { toast('백업 파일을 읽지 못했어요'); }
