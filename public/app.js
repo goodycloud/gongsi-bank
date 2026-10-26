@@ -354,7 +354,7 @@ async function showSubject(key) {
   $app.innerHTML = bar(back(), s.name, `${d.items.length.toLocaleString()}문항`) + `
     <div class="modes">
       <button class="mode primary" data-m="daily" type="button"><span class="mt">오늘의 10문제</span><span class="ms">${dSub}</span></button>
-      ${cu ? `<button class="mode" data-m="concept" type="button"><span class="mt">개념 카드 <span class="badge">샘플</span></span><span class="ms">책 읽은 뒤 카드로 확인 → 그 단원 기출 · ${cu}단원</span></button>` : ''}
+      ${cu ? `<button class="mode" data-m="concept" type="button"><span class="mt">개념 카드</span><span class="ms">책 읽은 뒤 카드로 확인 → 그 단원 기출 · ${cu}단원</span></button>` : ''}
       ${oxRow}
       <button class="mode" data-m="wrong" type="button" ${wn ? '' : 'disabled'}><span class="mt">오답 10문제</span><span class="ms">${wn ? (wn > SET_N ? `틀린 문제 ${wn}개 중 ${SET_N}개` : `틀린 문제 ${wn}개 모두`) : '아직 틀린 문제가 없어요'}</span></button>
       <button class="mode" data-m="units" type="button"><span class="mt">단원별</span><span class="ms">단원 골라 10문제 세트 또는 단원 집중</span></button>
@@ -677,7 +677,7 @@ async function showConceptList(key) {
       <div class="ubtn"><button class="chip con" data-c="${esc(code)}" type="button">열기</button></div></li>`;
   }).join('');
   $app.innerHTML = bar(back('← ' + SUBJ[key].name), '개념 카드') + `
-    <p class="note">샘플로 ${Object.keys(con.units).length}단원만 만들었어요. 카드 모양과 흐름이 괜찮으면 나머지 단원도 같은 형식으로 채워요.</p>
+    <p class="note">${Object.keys(con.units).length}단원 · ${key === 'law' ? '핵심집약으로 개념 읽기 → 카드로 판단 기준·함정 확인 → 단원 기출' : '패스프래소 읽기 → 카드 읽고 메모 한두 줄 → 단원 기출'}. '섞여 나온 것' 카드는 다른 주제인데 이 단원으로 분류된 기출이에요.</p>
     <ul class="units">${rows}</ul>`;
   on('[data-back]', () => showSubject(key));
   on('[data-c]', b => showConcept(key, b.dataset.c, null, () => showConceptList(key)));
