@@ -529,6 +529,7 @@ function solHtml(s) {
       <div><b>풀이</b><p>${esc(s.exp)}</p></div>
       ${s.wrong ? `<div><b>오답</b><p>${esc(s.wrong)}</p></div>` : ''}
       ${voc ? `<div><b>어휘</b><p class="voc">${voc}</p></div>` : ''}
+      ${s.note ? `<div><b>참고</b><p>${esc(s.note)}</p></div>` : ''}
     </div>`;
 }
 function oxHtml(key, o, picked) {
