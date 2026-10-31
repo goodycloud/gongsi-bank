@@ -520,10 +520,12 @@ function questionHtml(key, q, picked) {
 }
 // 영어: 선지별 대신 문항 전체 해설 (핵심 문장 해석 → 풀이 → 오답 → 어휘)
 function solHtml(s) {
-  const key = (s.key || []).map(([en, ko]) => `<p class="en">${esc(en)}</p><p class="ko">${esc(ko)}</p>`).join('');
+  // 영어 key = [[원문, 해석]…] / 국어 key = ["지문 근거 문장"…]
+  const ko = (s.key || []).some(k => typeof k === 'string');
+  const key = (s.key || []).map(k => typeof k === 'string' ? `<p class="kq">${esc(k)}</p>` : `<p class="en">${esc(k[0])}</p><p class="ko">${esc(k[1])}</p>`).join('');
   const voc = (s.voc || []).map(([w, m]) => `<span><i>${esc(w)}</i> ${esc(m)}</span>`).join('');
   return `<div class="sol">
-      ${key ? `<div class="sk"><b>핵심 문장</b>${key}</div>` : ''}
+      ${key ? `<div class="sk"><b>${ko ? '근거' : '핵심 문장'}</b>${key}</div>` : ''}
       <div><b>풀이</b><p>${esc(s.exp)}</p></div>
       ${s.wrong ? `<div><b>오답</b><p>${esc(s.wrong)}</p></div>` : ''}
       ${voc ? `<div><b>어휘</b><p class="voc">${voc}</p></div>` : ''}
