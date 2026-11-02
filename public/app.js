@@ -331,13 +331,13 @@ async function showHome() {
     </button>`;
   }).join('');
   let vtile = '';
-  try { await loadVoc(); vtile = vocTile(); } catch (e) { }
+  for (const k of Object.keys(DECKS)) { try { await loadDeck(k); vtile += vocTile(k); } catch (e) { } }
   $app.innerHTML = `<div class="bar"><h1>9급 문제은행</h1>
       <span class="sub"><button class="icon-btn" id="sync-badge" type="button">${syncLabel()}</button></span>
       <button class="icon-btn" id="go-stats" type="button">통계</button></div>
     <div class="subjects">${cards}${vtile}</div>
     <p class="note">${dk} · 과목을 눌러 오늘의 10문제, OX, 오답, 단원별로 풀 수 있어요.</p>`;
-  on('.subj', b => b.dataset.k === 'voc' ? showVoc() : showSubject(b.dataset.k));
+  on('.subj', b => b.dataset.k[0] === 'v' ? showVoc(b.dataset.k[1]) : showSubject(b.dataset.k));
   document.getElementById('go-stats').onclick = showStats;
   document.getElementById('sync-badge').onclick = showSync;
   window.scrollTo(0, 0);
@@ -768,96 +768,102 @@ async function showConcept(key, code, focusId, ret) {
   else window.scrollTo(0, 0);
 }
 
-/* ── 영단어 ─────────────────────────────────────────────── */
-// 학원 공무원 필수 단어(DAY 1–45) + 내가 추가한 단어. 카드 앞면을 보고 떠올린 뒤 뒤집어서 알았음/몰랐음.
-// 오늘의 단어는 1회독 플랜과 같다: 11.3이 DAY 1, 일요일 포함 하루 1 DAY. 복습은 DAY N−1·N−3·N−7.
-// 학원 DAY를 다 돌면 다음 날부터 DAY 1로 다시 돈다(2회독).
+/* ── 영단어 · 숙어 ─────────────────────────────────────────── */
+// 덱 두 개: 학원 공무원 필수 단어(DAY 1–45, 내가 추가한 단어 포함)와 숙어(하루 30개씩).
+// 카드 앞면을 보고 떠올린 뒤 뒤집어서 알았음/몰랐음. 오늘의 DAY는 1회독 플랜과 같다:
+// 11.3이 DAY 1, 일요일 포함 하루 1 DAY. 복습은 DAY N−1·N−3·N−7. 마지막 DAY 다음 날부터 DAY 1로 다시 돈다.
 const VOC_START = new Date(2026, 10, 3).getTime();
-let VOC = null, VS = null, VDIR = store.get('vdir', 0);   // VDIR 0: 영어→뜻, 1: 뜻→영어
+const DECKS = {
+  w: { key: 'w', name: '영단어', file: 'voc.json', unit: '단어', src: '학원 공무원 필수 단어', mine: true },
+  i: { key: 'i', name: '숙어', file: 'idiom.json', unit: '숙어', src: '문풀 어휘 보충 자료 · 하루 30개' },
+};
+const VD = {};
+let VS = null, VDIR = store.get('vdir', 0);   // VDIR 0: 영어→뜻, 1: 뜻→영어
+const deckOf = id => id[0] === 'i' ? 'i' : 'w';   // 단어 v…, 내 단어 u-…, 숙어 i…
 function vwOf(d, t) {
   const s = (x, n) => String(x || '').trim().slice(0, n);
   return { en: s(d.en, 200), ko: s(d.ko, 400), memo: s(d.memo, 300), del: !!d.del, t };
 }
-async function loadVoc() {
-  if (VOC) return VOC;
-  const r = await fetch('data/voc.json');
-  if (!r.ok) throw new Error('단어 데이터를 불러오지 못했어요 (' + r.status + ')');
+async function loadDeck(k) {
+  if (VD[k]) return VD[k];
+  const r = await fetch('data/' + DECKS[k].file);
+  if (!r.ok) throw new Error(DECKS[k].name + ' 데이터를 불러오지 못했어요 (' + r.status + ')');
   const d = await r.json();
   d.byId = new Map(d.items.map(w => [w.id, w]));
   d.byDay = {};
   for (const w of d.items) (d.byDay[w.d] || (d.byDay[w.d] = [])).push(w.id);
   d.nDays = Math.max(...Object.keys(d.byDay).map(Number));
-  return (VOC = d);
+  return (VD[k] = d);
 }
 // 단어 한 개. 내가 고친 뜻이 있으면 그걸 쓴다.
 function vword(id) {
-  const base = VOC.byId.get(id), u = VUSER[id];
-  if (!base) return u && !u.del ? { id, en: u.en, ko: u.ko, memo: u.memo, mine: true } : null;
+  const D = VD[deckOf(id)], base = D && D.byId.get(id), u = VUSER[id];
+  if (!base) return u && !u.del && id.startsWith('u-') ? { id, en: u.en, ko: u.ko, memo: u.memo, mine: true } : null;
   if (u && !u.del) return { ...base, en: u.en || base.en, ko: u.ko || base.ko, memo: u.memo, edited: true };
   return base;
 }
-const myWordIds = () => Object.keys(VUSER).filter(id => !VOC.byId.has(id) && !VUSER[id].del).sort((a, b) => VUSER[b].t - VUSER[a].t);
+const myWordIds = () => Object.keys(VUSER).filter(id => id.startsWith('u-') && !VUSER[id].del).sort((a, b) => VUSER[b].t - VUSER[a].t);
 const planDay = () => Math.floor((today0() - VOC_START) / DAY) + 1;
-const acadDay = n => (n - 1) % VOC.nDays + 1;
-function vocToday() {
-  const n = planDay();
+function vocToday(k) {
+  const n = planDay(), N = VD[k].nDays, ad = m => (m - 1) % N + 1;
   if (n < 1) return { n, start: true, day: 1, rev: [] };
-  const rev = [...new Set([n - 1, n - 3, n - 7].filter(k => k >= 1).map(acadDay))];
-  return { n, day: acadDay(n), rev, round: Math.floor((n - 1) / VOC.nDays) + 1 };
+  const rev = [...new Set([n - 1, n - 3, n - 7].filter(m => m >= 1).map(ad))];
+  return { n, day: ad(n), rev, round: Math.floor((n - 1) / N) + 1 };
 }
 const seenToday = ids => { const t0 = today0(); return ids.filter(id => VOCK[id] && VOCK[id].t >= t0).length; };
-const unknownIds = () => Object.keys(VOCK).filter(id => !VOCK[id].ok && vword(id)).sort((a, b) => VOCK[b].t - VOCK[a].t);
+const unknownIds = k => Object.keys(VOCK).filter(id => deckOf(id) === k && !VOCK[id].ok && vword(id)).sort((a, b) => VOCK[b].t - VOCK[a].t);
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-const vTagOf = w => w.mine ? '내 단어' : 'DAY ' + w.d;
+const vTagOf = w => w.mine ? '내 단어' : (w.id[0] === 'i' ? '숙어 ' : '') + 'DAY ' + w.d;
 
-function vocTile() {
-  const td = vocToday(), ids = VOC.byDay[td.day] || [], s = seenToday(ids);
-  const seen = VOC.items.filter(w => VOCK[w.id]).length;
+function vocTile(k) {
+  const D = VD[k], c = DECKS[k], td = vocToday(k), ids = D.byDay[td.day] || [], s = seenToday(ids);
+  const seen = D.items.filter(w => VOCK[w.id]).length;
   const line = td.start ? '11.3(화)부터 DAY 1' : s >= ids.length ? `오늘 DAY ${td.day} 완료` : `오늘 DAY ${td.day} · ${s}/${ids.length}`;
-  return `<button class="subj" data-k="voc" type="button">
-      <span class="nm">영단어</span>
+  return `<button class="subj" data-k="v${k}" type="button">
+      <span class="nm">${c.name}</span>
       <span class="ln ${!td.start && s >= ids.length ? 'done' : ''}">${line}</span>
-      <span class="acc">모르는 단어 <b>${unknownIds().length}</b>개</span>
-      <span class="meter" aria-hidden="true"><i style="width:${(seen / VOC.items.length * 100).toFixed(1)}%"></i></span>
-      <span class="ln">${seen.toLocaleString()} / ${VOC.items.length.toLocaleString()}단어 봐둠</span>
+      <span class="acc">모르는 ${c.unit} <b>${unknownIds(k).length}</b>개</span>
+      <span class="meter" aria-hidden="true"><i style="width:${(seen / D.items.length * 100).toFixed(1)}%"></i></span>
+      <span class="ln">${seen.toLocaleString()} / ${D.items.length.toLocaleString()}${c.unit === '단어' ? '단어' : '개'} 봐둠</span>
     </button>`;
 }
 
-async function showVoc() {
-  onSyncRefresh = showVoc; setDock('');
-  await loadVoc();
-  const td = vocToday(), ids = VOC.byDay[td.day] || [], s = seenToday(ids);
-  const revIds = td.rev.flatMap(d => VOC.byDay[d] || []);
+async function showVoc(k = 'w') {
+  onSyncRefresh = () => showVoc(k); setDock('');
+  const D = await loadDeck(k), c = DECKS[k], u = c.unit;
+  const home = () => showVoc(k);
+  const td = vocToday(k), ids = D.byDay[td.day] || [], s = seenToday(ids);
+  const revIds = td.rev.flatMap(d => D.byDay[d] || []);
   const revNo = revIds.filter(id => !(VOCK[id] && VOCK[id].ok));
-  const unk = unknownIds(), mine = myWordIds();
+  const unk = unknownIds(k), mine = c.mine ? myWordIds() : [];
   const newSub = td.start ? `내일(11.3)이 DAY 1이에요 · 미리 보기 ${ids.length}개`
-    : (s ? (s >= ids.length ? `${ids.length}개 다 봤음 · 다시 보기` : `${s}/${ids.length} 봤음 · 이어 보기`) : `새 단어 ${ids.length}개 · 책 순서대로`) + (td.round > 1 ? ` · ${td.round}회독` : '');
-  $app.innerHTML = bar(back(), '영단어', `학원 DAY 1–${VOC.nDays} · ${VOC.items.length.toLocaleString()}단어`) + `
+    : (s ? (s >= ids.length ? `${ids.length}개 다 봤음 · 다시 보기` : `${s}/${ids.length} 봤음 · 이어 보기`) : `새 ${u} ${ids.length}개 · 책 순서대로`) + (td.round > 1 ? ` · ${td.round}회독` : '');
+  $app.innerHTML = bar(back(), c.name, `DAY 1–${D.nDays} · ${D.items.length.toLocaleString()}개`) + `
     <div class="seg" role="group" aria-label="카드 앞면">
       <button type="button" data-dir="0" aria-pressed="${!VDIR}">영어 보고 뜻</button>
       <button type="button" data-dir="1" aria-pressed="${!!VDIR}">뜻 보고 영어</button></div>
     <div class="modes">
-      <button class="mode primary" data-v="new" type="button"><span class="mt">오늘의 단어 · DAY ${td.day}</span><span class="ms">${newSub}</span></button>
+      <button class="mode primary" data-v="new" type="button"><span class="mt">오늘의 ${u} · DAY ${td.day}</span><span class="ms">${newSub}</span></button>
       ${td.rev.length ? `<button class="mode" data-v="rev" type="button"><span class="mt">복습 · DAY ${td.rev.join(' · ')}</span><span class="ms">${revIds.length}개 전부 · 모르는 것 먼저, 나머지는 섞어서</span></button>
-      <button class="mode" data-v="revno" type="button" ${revNo.length ? '' : 'disabled'}><span class="mt">복습 · 몰랐던 것만</span><span class="ms">${revNo.length ? `DAY ${td.rev.join('·')}에서 아직 모르는 것·안 본 것 ${revNo.length}개` : '복습할 DAY의 단어를 다 알아요'}</span></button>` : ''}
-      <button class="mode" data-v="unk" type="button" ${unk.length ? '' : 'disabled'}><span class="mt">모르는 단어</span><span class="ms">${unk.length ? `마지막에 '몰랐음'을 누른 단어 ${unk.length}개` : '아직 없어요'}</span></button>
-      <button class="mode" data-v="mine" type="button"><span class="mt">내 단어장</span><span class="ms">${mine.length ? `직접 추가한 단어 ${mine.length}개 · 추가하기` : '하프 모고에서 모르는 단어를 여기에 추가'}</span></button>
-      <button class="mode" data-v="days" type="button"><span class="mt">DAY별 · 단어 찾기</span><span class="ms">DAY 골라서 카드나 목록으로 · 뜻 고치기</span></button>
+      <button class="mode" data-v="revno" type="button" ${revNo.length ? '' : 'disabled'}><span class="mt">복습 · 몰랐던 것만</span><span class="ms">${revNo.length ? `DAY ${td.rev.join('·')}에서 아직 모르는 것·안 본 것 ${revNo.length}개` : `복습할 DAY의 ${u}를 다 알아요`}</span></button>` : ''}
+      <button class="mode" data-v="unk" type="button" ${unk.length ? '' : 'disabled'}><span class="mt">모르는 ${u}</span><span class="ms">${unk.length ? `마지막에 '몰랐음'을 누른 ${u} ${unk.length}개` : '아직 없어요'}</span></button>
+      ${c.mine ? `<button class="mode" data-v="mine" type="button"><span class="mt">내 단어장</span><span class="ms">${mine.length ? `직접 추가한 단어 ${mine.length}개 · 추가하기` : '하프 모고에서 모르는 단어를 여기에 추가'}</span></button>` : ''}
+      <button class="mode" data-v="days" type="button"><span class="mt">DAY별 · ${u} 찾기</span><span class="ms">DAY 골라서 카드나 목록으로 · 뜻 고치기</span></button>
     </div>
     <p class="note">카드를 눌러 뒤집고 알았음·몰랐음을 고르면 돼요. 한 바퀴 끝나면 몰랐던 것만 다시 돌 수 있어요. PC에서는 스페이스(뒤집기) · ←(몰랐음) · →(알았음).</p>`;
   on('[data-back]', showHome);
-  on('[data-dir]', b => { VDIR = +b.dataset.dir; store.set('vdir', VDIR); showVoc(); });
+  on('[data-dir]', b => { VDIR = +b.dataset.dir; store.set('vdir', VDIR); home(); });
   on('[data-v]', b => {
     const v = b.dataset.v;
-    if (v === 'new') startCards(`DAY ${td.day}`, ids.slice(), { resume: !td.start });
+    if (v === 'new') startCards(`${c.name} DAY ${td.day}`, ids.slice(), { resume: !td.start, ret: home });
     else if (v === 'rev') {
       const no = revIds.filter(id => !(VOCK[id] && VOCK[id].ok)), yes = revIds.filter(id => VOCK[id] && VOCK[id].ok);
-      startCards(`복습 DAY ${td.rev.join('·')}`, shuffle(no).concat(shuffle(yes)));
+      startCards(`${c.name} 복습 DAY ${td.rev.join('·')}`, shuffle(no).concat(shuffle(yes)), { ret: home });
     }
-    else if (v === 'revno') startCards('복습 · 몰랐던 것', shuffle(revNo.slice()));
-    else if (v === 'unk') startCards('모르는 단어', shuffle(unk.slice()));
+    else if (v === 'revno') startCards(`${c.name} 복습 · 몰랐던 것`, shuffle(revNo.slice()), { ret: home });
+    else if (v === 'unk') startCards(`모르는 ${u}`, shuffle(unk.slice()), { ret: home });
     else if (v === 'mine') showVocMine();
-    else if (v === 'days') showVocDays();
+    else if (v === 'days') showVocDays(k);
   });
   window.scrollTo(0, 0);
 }
@@ -865,13 +871,13 @@ async function showVoc() {
 // 카드 세션. resume이면 오늘 이미 본 카드는 건너뛰고 이어서.
 function startCards(title, ids, opt = {}) {
   ids = ids.filter(id => vword(id));
-  if (!ids.length) { toast('볼 단어가 없어요'); return; }
+  if (!ids.length) { toast('볼 카드가 없어요'); return; }
   let i = 0;
   if (opt.resume) {
     const t0 = today0(), j = ids.findIndex(id => !(VOCK[id] && VOCK[id].t >= t0));
     i = j < 0 ? 0 : j;
   }
-  VS = { title, ids, i, res: new Map(), flip: false, ret: opt.ret || showVoc, round: 1 };
+  VS = { title, ids, i, res: new Map(), flip: false, ret: opt.ret || (() => showVoc('w')), round: 1 };
   renderCard();
 }
 function renderCard() {
@@ -881,17 +887,18 @@ function renderCard() {
   const [f, bk] = VDIR ? [w.ko, w.en] : [w.en, w.ko];
   const last = VOCK[id];
   const lastTxt = last ? `지난번 ${last.ok ? '알았음' : '몰랐음'} · ${new Date(last.t).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : '처음 보는 카드';
-  $app.innerHTML = `<div class="bar">${back('← 영단어')}<h1 class="sm">${esc(VS.title)}${VS.round > 1 ? ` · ${VS.round}바퀴` : ''}</h1><span class="sub">${VS.i + 1} / ${VS.ids.length}</span></div>
+  const long = f.length > 22;
+  $app.innerHTML = `<div class="bar">${back('← 뒤로')}<h1 class="sm">${esc(VS.title)}${VS.round > 1 ? ` · ${VS.round}바퀴` : ''}</h1><span class="sub">${VS.i + 1} / ${VS.ids.length}</span></div>
     <div class="vprog" aria-hidden="true"><i style="width:${(VS.i / VS.ids.length * 100).toFixed(1)}%"></i></div>
     <button class="vcard${VS.flip ? ' flip' : ''}" id="vc" type="button"${VS.flip ? '' : ' aria-label="뒤집기"'}>
       <span class="vtag">${esc(vTagOf(w))}${w.edited ? ' · 고친 뜻' : ''}</span>
-      <span class="vf ${VDIR ? 'ko' : 'en'}">${esc(f)}</span>
-      ${VS.flip ? `<span class="vb ${VDIR ? 'en' : 'ko'}">${esc(bk)}</span>${w.memo ? `<span class="vm">${esc(w.memo)}</span>` : ''}` : '<span class="vhint">눌러서 뒤집기</span>'}
+      <span class="vf ${VDIR ? 'ko' : 'en'}${long ? ' long' : ''}">${esc(f)}</span>
+      ${VS.flip ? `<span class="vb ${VDIR ? 'en' : 'ko'}">${esc(bk)}</span>${w.sy ? `<span class="vsy">${esc(w.sy)}</span>` : ''}${w.memo ? `<span class="vm">${esc(w.memo)}</span>` : ''}` : '<span class="vhint">눌러서 뒤집기</span>'}
     </button>
     <div class="tools vtools"><span class="note">${lastTxt}</span>
       ${VS.i > 0 ? '<button class="chip" data-vt="prev" type="button">이전 카드</button>' : ''}
       ${VS.flip ? '<button class="chip" data-vt="edit" type="button">뜻 고치기</button>' : ''}</div>`;
-  on('[data-back]', () => { VS = null; showVoc(); });
+  on('[data-back]', () => { const r = VS.ret; VS = null; r(); });
   document.getElementById('vc').onclick = () => { if (!VS.flip) { VS.flip = true; renderCard(); } };
   on('[data-vt]', b => {
     if (b.dataset.vt === 'prev') { VS.i--; VS.flip = true; renderCard(); }
@@ -923,12 +930,12 @@ function vocSummary() {
   const seen = VS.ids.filter(id => VS.res.has(id));
   const wrong = seen.filter(id => VS.res.get(id) === false), ok = seen.length - wrong.length;
   const rows = wrong.map(id => { const w = vword(id); return w ? `<li class="vrow"><span class="ven">${esc(w.en)}</span><span class="vko">${esc(w.ko)}</span></li>` : ''; }).join('');
-  $app.innerHTML = bar(back('← 영단어'), esc(VS.title), `${ok} / ${seen.length} 알았음`) + `
-    <div class="card"><h2>${wrong.length ? `몰랐던 단어 ${wrong.length}개` : seen.length ? '전부 알았어요' : '이번에 표시한 카드가 없어요'}</h2>
+  $app.innerHTML = bar(back('← 뒤로'), esc(VS.title), `${ok} / ${seen.length} 알았음`) + `
+    <div class="card"><h2>${wrong.length ? `몰랐던 것 ${wrong.length}개` : seen.length ? '전부 알았어요' : '이번에 표시한 카드가 없어요'}</h2>
       <p class="note">${seen.length < VS.ids.length ? `이번에 ${seen.length}장 표시 (앞부분은 오늘 이미 본 카드라 건너뜀) · ` : ''}알았음 ${ok} · 몰랐음 ${wrong.length}</p></div>
     ${rows ? `<ul class="vlist">${rows}</ul>` : ''}`;
   const ret = VS.ret;
-  setDock(`<button class="btn" id="vback" type="button">영단어로</button>${wrong.length ? `<button class="btn primary" id="vagain" type="button">몰랐던 것 다시 (${wrong.length})</button>` : ''}`);
+  setDock(`<button class="btn" id="vback" type="button">끝내기</button>${wrong.length ? `<button class="btn primary" id="vagain" type="button">몰랐던 것 다시 (${wrong.length})</button>` : ''}`);
   on('[data-back]', () => { VS = null; ret(); });
   document.getElementById('vback').onclick = () => { VS = null; ret(); };
   if (wrong.length) document.getElementById('vagain').onclick = () => {
@@ -938,33 +945,34 @@ function vocSummary() {
   window.scrollTo(0, 0);
 }
 
-function showVocDays() {
-  onSyncRefresh = showVocDays; setDock('');
-  const td = vocToday();
-  const rows = Object.keys(VOC.byDay).map(Number).sort((a, b) => a - b).map(d => {
-    const ids = VOC.byDay[d], seen = ids.filter(id => VOCK[id]), ok = seen.filter(id => VOCK[id].ok).length;
-    return `<li class="unit${!td.start && d === td.day ? ' today' : ''}"><div class="un"><span class="unm">DAY ${d}${!td.start && d === td.day ? ' · 오늘' : ''}</span>
-        <span class="ust">${ids.length}단어${seen.length ? ` · 봐둠 ${seen.length} · 아는 것 ${ok}` : ''}</span></div>
+function showVocDays(k) {
+  onSyncRefresh = () => showVocDays(k); setDock('');
+  const D = VD[k], c = DECKS[k], td = vocToday(k), again = () => showVocDays(k);
+  const rows = Object.keys(D.byDay).map(Number).sort((a, b) => a - b).map(d => {
+    const ids = D.byDay[d], seen = ids.filter(id => VOCK[id]), ok = seen.filter(id => VOCK[id].ok).length;
+    const isT = !td.start && d === td.day;
+    return `<li class="unit${isT ? ' today' : ''}"><div class="un"><span class="unm">DAY ${d}${isT ? ' · 오늘' : ''}</span>
+        <span class="ust">${ids.length}개${seen.length ? ` · 봐둠 ${seen.length} · 아는 것 ${ok}` : ''}</span></div>
       <div class="ubtn"><button class="chip" data-d="${d}" data-u="list" type="button">목록</button><button class="chip con" data-d="${d}" data-u="card" type="button">카드</button></div></li>`;
   }).join('');
-  $app.innerHTML = bar(back('← 영단어'), 'DAY별 · 단어 찾기') + `
-    <input id="vq" class="field vfield" type="search" placeholder="영어나 뜻으로 찾기 (예: provide, 공급)" autocomplete="off" autocapitalize="none" spellcheck="false">
+  $app.innerHTML = bar(back('← ' + c.name), `DAY별 · ${c.unit} 찾기`) + `
+    <input id="vq" class="field vfield" type="search" placeholder="${k === 'i' ? '영어나 뜻으로 찾기 (예: at stake, 위태)' : '영어나 뜻으로 찾기 (예: provide, 공급)'}" autocomplete="off" autocapitalize="none" spellcheck="false">
     <ul class="vlist" id="vres" hidden></ul>
     <ul class="units" id="vdays">${rows}</ul>`;
-  on('[data-back]', showVoc);
+  on('[data-back]', () => showVoc(k));
   on('[data-u]', b => {
     const d = +b.dataset.d;
-    if (b.dataset.u === 'card') startCards(`DAY ${d}`, VOC.byDay[d].slice(), { ret: showVocDays });
-    else showVocList(`DAY ${d}`, VOC.byDay[d], showVocDays);
+    if (b.dataset.u === 'card') startCards(`${c.name} DAY ${d}`, D.byDay[d].slice(), { ret: again });
+    else showVocList(`${c.name} DAY ${d}`, D.byDay[d], again);
   });
   const q = document.getElementById('vq'), res = document.getElementById('vres'), days = document.getElementById('vdays');
   q.oninput = () => {
     const s = q.value.trim().toLowerCase();
     if (!s) { res.hidden = true; days.hidden = false; return; }
-    const ids = VOC.items.map(w => w.id).concat(myWordIds()).filter(id => { const w = vword(id); return w && (w.en.toLowerCase().includes(s) || w.ko.includes(s)); }).slice(0, 80);
-    res.innerHTML = ids.length ? ids.map(id => vrowHtml(id)).join('') : '<li class="vrow"><span class="note">찾는 단어가 없어요</span></li>';
+    const ids = D.items.map(w => w.id).concat(c.mine ? myWordIds() : []).filter(id => { const w = vword(id); return w && (w.en.toLowerCase().includes(s) || w.ko.includes(s)); }).slice(0, 80);
+    res.innerHTML = ids.length ? ids.map(id => vrowHtml(id)).join('') : '<li class="vrow"><span class="note">찾는 게 없어요</span></li>';
     res.hidden = false; days.hidden = true;
-    res.querySelectorAll('[data-w]').forEach(el => el.onclick = () => showVocEdit(el.dataset.w, () => { showVocDays(); }));
+    res.querySelectorAll('[data-w]').forEach(el => el.onclick = () => showVocEdit(el.dataset.w, again));
   };
   window.scrollTo(0, 0);
 }
@@ -975,8 +983,8 @@ function vrowHtml(id) {
 }
 function showVocList(title, ids, ret) {
   onSyncRefresh = () => showVocList(title, ids, ret);
-  $app.innerHTML = bar(back('← 뒤로'), esc(title), `${ids.length}단어`) + `
-    <p class="note">초록 점은 알았음, 빨간 점은 몰랐음. 단어를 누르면 뜻을 고칠 수 있어요.</p>
+  $app.innerHTML = bar(back('← 뒤로'), esc(title), `${ids.length}개`) + `
+    <p class="note">초록 점은 알았음, 빨간 점은 몰랐음. 누르면 뜻을 고칠 수 있어요.</p>
     <ul class="vlist">${ids.filter(id => vword(id)).map(vrowHtml).join('')}</ul>`;
   setDock(`<button class="btn primary" id="vgo" type="button">카드로 보기</button>`);
   document.getElementById('vgo').onclick = () => startCards(title, ids.slice(), { ret: () => showVocList(title, ids, ret) });
@@ -998,7 +1006,7 @@ function showVocMine() {
     ${ids.length ? `<ul class="vlist">${ids.map(vrowHtml).join('')}</ul>` : '<p class="note">추가한 단어는 모든 기기에 동기화되고, 카드로 볼 수 있어요.</p>'}`;
   setDock(ids.length ? `<button class="btn primary" id="vgo" type="button">카드로 보기 (${ids.length})</button>` : '');
   if (ids.length) document.getElementById('vgo').onclick = () => startCards('내 단어장', ids.slice(), { ret: showVocMine });
-  on('[data-back]', showVoc);
+  on('[data-back]', () => showVoc('w'));
   on('[data-w]', b => showVocEdit(b.dataset.w, showVocMine));
   document.getElementById('vadd').onsubmit = e => {
     e.preventDefault();
@@ -1013,7 +1021,7 @@ function showVocMine() {
   window.scrollTo(0, 0);
 }
 function showVocEdit(id, ret) {
-  const w = vword(id), base = VOC.byId.get(id);
+  const w = vword(id), D = VD[deckOf(id)], base = D && D.byId.get(id);
   if (!w) { ret(); return; }
   setDock('');
   $app.innerHTML = bar(back('← 뒤로'), w.mine ? '내 단어 고치기' : '뜻 고치기', esc(vTagOf(w))) + `

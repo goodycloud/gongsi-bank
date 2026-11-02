@@ -261,3 +261,6 @@ textarea.vfield{resize:vertical;line-height:1.5}
 .vform label{display:flex;flex-direction:column;gap:4px}
 .unit.today{box-shadow:inset 3px 0 0 var(--omr)}
 @media (max-width:420px){.vrow{grid-template-columns:10px minmax(0,1fr) minmax(0,1.3fr)}.vrow .vt{display:none}}
+.vf.en.long{font-size:clamp(21px,5.8vw,28px)}
+.vf.ko.long{font-size:clamp(18px,5vw,22px)}
+.vsy{font-size:13.5px;color:var(--muted);font-family:var(--serif);font-style:italic;max-width:100%;overflow-wrap:anywhere}
