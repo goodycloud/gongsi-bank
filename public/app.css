@@ -223,3 +223,41 @@ table.ct td.rh{font-weight:600;white-space:nowrap}
 .memo span{font-size:13px;color:var(--muted)}
 .memo textarea{font-family:var(--sans);font-size:14.5px;line-height:1.55;padding:8px 10px;border:1px dashed var(--rule);border-radius:6px;background:var(--paper);color:var(--ink);resize:vertical}
 .memo textarea:focus-visible{outline:2px solid var(--omr);border-style:solid}
+
+/* ── 영단어 카드 ── */
+.vprog{height:4px;background:var(--rule);border-radius:2px;overflow:hidden}
+.vprog i{display:block;height:100%;background:var(--omr)}
+.vcard{all:unset;box-sizing:border-box;cursor:pointer;width:100%;min-height:min(46vh,340px);background:var(--sheet);border:1px solid var(--rule);border-radius:10px;
+  padding:18px 18px 22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;position:relative}
+.vcard:focus-visible{outline:2px solid var(--omr)}
+.vcard.flip{cursor:default;border-color:color-mix(in srgb,var(--omr) 40%,var(--rule))}
+.vtag{position:absolute;top:10px;left:14px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.vf{overflow-wrap:anywhere;max-width:100%}
+.vf.en{font-family:var(--serif);font-size:clamp(26px,7.5vw,36px);font-weight:700;line-height:1.3}
+.vf.ko{font-size:clamp(20px,5.6vw,26px);font-weight:600;line-height:1.5}
+.vb{overflow-wrap:anywhere;max-width:100%;padding-top:14px;border-top:1px dashed var(--rule);width:100%}
+.vb.ko{font-size:clamp(18px,5vw,22px);line-height:1.6}
+.vb.en{font-family:var(--serif);font-size:clamp(22px,6.4vw,30px);font-weight:700}
+.vm{font-size:13.5px;color:var(--muted)}
+.vhint{font-size:13.5px;color:var(--muted)}
+.vtools{align-items:center}
+.vtools .note{margin-right:auto}
+.btn.vno{border-color:var(--bad);color:var(--bad)}
+.btn.vok{background:var(--ok);border-color:var(--ok);color:var(--sheet)}
+ul.vlist{list-style:none;margin:0;padding:0;background:var(--sheet);border:1px solid var(--rule);border-radius:6px}
+ul.vlist>li{border-bottom:1px solid var(--rule)}
+ul.vlist>li:last-child{border-bottom:0}
+.vrow{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:10px minmax(0,1fr) minmax(0,1.4fr) auto;gap:4px 10px;align-items:baseline;padding:9px 12px}
+li.vrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:4px 10px;padding:9px 12px;border-bottom:1px solid var(--rule)}
+.vrow:focus-visible{outline:2px solid var(--omr);outline-offset:-2px}
+.ven{font-family:var(--serif);font-weight:700;font-size:15.5px;overflow-wrap:anywhere}
+.vko{font-size:14.5px;overflow-wrap:anywhere}
+.vko small{color:var(--muted)}
+.vt{font-size:12px;color:var(--muted);white-space:nowrap}
+.vdot{width:8px;height:8px;border-radius:50%;background:var(--rule);align-self:center}
+.vdot.ok{background:var(--ok)} .vdot.no{background:var(--bad)}
+.vfield{font-family:var(--sans);font-size:16px}
+textarea.vfield{resize:vertical;line-height:1.5}
+.vform label{display:flex;flex-direction:column;gap:4px}
+.unit.today{box-shadow:inset 3px 0 0 var(--omr)}
+@media (max-width:420px){.vrow{grid-template-columns:10px minmax(0,1fr) minmax(0,1.3fr)}.vrow .vt{display:none}}
