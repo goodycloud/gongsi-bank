@@ -290,7 +290,8 @@ window.addEventListener('online', () => syncNow());
 /* ── 화면 도구 ─────────────────────────────────────────── */
 const $app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  .replace(/\x02/g, '<u>').replace(/\x03/g, '</u>');
+  .replace(/\x02/g, '<u>').replace(/\x03/g, '</u>')
+  .replace(/\x04/g, '<span class="bx">').replace(/\x05/g, '</span>');   // 원본의 빈칸·라벨 상자
 const pct = x => x == null ? '–' : Math.round(x * 100) + '%';
 let dock = null;
 function setDock(html) {
@@ -640,7 +641,7 @@ function showResults() {
     const it = itemOf(id), h = S.res.get(id);
     const label = S.ox ? it.st : it.stem;
     return `<li><button class="rrow" data-j="${j}" type="button"><span class="rk ${h ? (h.ok ? 'ok' : 'no') : ''}">${h ? (h.ok ? 'O' : 'X') : '–'}</span>
-      <span class="rt"><span class="rl">${esc(label.replace(/[\x02\x03]/g, '').slice(0, 70))}</span><span class="rs">${esc(it.area)} · ${esc(it.src)}</span></span></button></li>`;
+      <span class="rt"><span class="rl">${esc(label.replace(/[\x02-\x05]/g, '').slice(0, 70))}</span><span class="rs">${esc(it.area)} · ${esc(it.src)}</span></span></button></li>`;
   }).join('');
   const ok = [...S.res.values()].filter(h => h.ok).length;
   const ret = S.ret || (() => showSubject(key));

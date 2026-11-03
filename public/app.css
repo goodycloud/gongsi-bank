@@ -264,3 +264,6 @@ textarea.vfield{resize:vertical;line-height:1.5}
 .vf.en.long{font-size:clamp(21px,5.8vw,28px)}
 .vf.ko.long{font-size:clamp(18px,5vw,22px)}
 .vsy{font-size:13.5px;color:var(--muted);font-family:var(--serif);font-style:italic;max-width:100%;overflow-wrap:anywhere}
+/* 원본 시험지의 빈칸·라벨 상자 (HWP 인라인 표) */
+.bx{display:inline-block;min-width:2.6em;padding:0 .35em;margin:0 .1em;border:1.2px solid currentColor;border-radius:2px;text-align:center;line-height:1.35;vertical-align:baseline;font-family:var(--sans);font-size:.92em;white-space:nowrap}
+.bx:empty::after{content:"\00a0"}
