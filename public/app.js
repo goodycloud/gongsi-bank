@@ -465,7 +465,8 @@ function itemOf(id) { return S.ox ? OX[S.key].byId.get(id) : DATA[S.key].byId.ge
 
 function blocksHtml(blocks) {
   return blocks.map(b => {
-    if (b.t === 'text') return /^<표>/.test(b.v) && !b.v.includes('\n') ? `<div class="gcap">${esc(b.v)}</div>` : `<div class="psg">${esc(b.v)}</div>`;
+    // .psg는 세로 flex라 글을 바로 넣으면 밑줄(<u>)마다 줄이 갈린다 → 한 겹 감싼다
+    if (b.t === 'text') return /^<표>/.test(b.v) && !b.v.includes('\n') ? `<div class="gcap">${esc(b.v)}</div>` : `<div class="psg"><div>${esc(b.v)}</div></div>`;
     if (b.t === 'grid') {                 // span: 병합 셀 [행, 열, 행수, 열수]. 가려진 칸은 건너뛴다
       const sp = new Map(), cov = new Set();
       for (const [r, c, rs, cs] of b.span || []) {
